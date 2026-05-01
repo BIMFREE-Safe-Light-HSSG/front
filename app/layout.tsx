@@ -26,9 +26,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Demo - Platform to Create",
+  title: "BIM-FREE SAFE(LIGHT)SCENEGRAPH",
   description:
-    "The creative platform for teams who ship. Build, deploy, and scale with unprecedented velocity.",
+    "BIM-FREE 디지털 트윈 기반 건물 안전 관리 및 화재 대응 플랫폼",
   generator: "v0.app",
 };
 
