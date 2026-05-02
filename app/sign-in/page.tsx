@@ -2,7 +2,7 @@
 
 import { useState } from "react"; // 2. 상태 관리를 위한 import
 import { useRouter } from "next/navigation"; // 로그인 성공 후 이동을 위한 import
-import { signin } from "@/app/api/auth"; // 이전에 만든 로그인 함수 호출
+import { signin } from "@/app/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

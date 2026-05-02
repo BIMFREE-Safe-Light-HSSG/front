@@ -9,6 +9,9 @@ import {
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
+// ✅ 1. Navigation 컴포넌트를 불러옵니다. (파일 경로가 다르면 수정하세요)
+import { Navigation } from "@/components/landing/navigation";
+
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-instrument",
@@ -27,8 +30,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "BIM-FREE-SAFE(LIGHT)SCENEGRAPH",
-  description:
-    "BIM-FREE 디지털 트윈 기반 건물 안전 관리 및 화재 대응 플랫폼",
+  description: "BIM-FREE 디지털 트윈 기반 건물 안전 관리 및 화재 대응 플랫폼",
   generator: "v0.app",
 };
 
@@ -38,11 +40,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body
         className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        {children}
+        <Navigation/>
+        <main>
+          {children}
+        </main>
         <Analytics />
       </body>
     </html>
