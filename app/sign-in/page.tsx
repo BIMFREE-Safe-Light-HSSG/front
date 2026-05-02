@@ -15,23 +15,29 @@ export default function SignInPage() {
   const router = useRouter();
 
   // 4. 폼 제출 핸들러 작성
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // 페이지 새로고침 방지
-    setIsLoading(true);
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault(); // 페이지 새로고침 방지
+  setIsLoading(true);
 
-    try {
-      // API 명세서대로 email과 password 전달
-      const result = await signin(email, password);
-      console.log("로그인 성공:", result);
-      
-      // 성공 시 메인 페이지나 대시보드로 이동
-      router.push("/"); 
-    } catch (error) {
-      alert("로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.");
-    } finally {
-      setIsLoading(false);
+  try {
+
+    const result = await signin(email, password);
+
+    if (result && result.access_token) {
+      localStorage.setItem("accessToken", result.access_token);
+      console.log("토큰 저장 완료:", result.access_token);
+    } else {
+      console.warn("로그인은 성공했으나 토큰이 응답에 없습니다.");
     }
-  };
+    window.location.href = "/";
+
+  } catch (error) {
+    console.error("로그인 에러 상세:", error);
+    alert("로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
