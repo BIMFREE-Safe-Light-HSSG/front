@@ -1,27 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // 페이지 이동을 위한 훅
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Menu, X, User } from "lucide-react"; // User 아이콘 추가
+import { Menu, X, User } from "lucide-react";
 
+// 네비게이션 링크 설정
 const navLinks = [
   { name: "Features", href: "#features" },
-  { name: "How it works", href: "#how-it-works" },
-  { name: "Developers", href: "#developers" },
+  { name: "Upload", href: "/upload" },           // 명칭 및 경로 수정
+  { name: "Viewer", href: "/viewer" },           // 로그인 필요
+  { name: "Developers(🚧developing🚧)", href: "#developers" },
 ];
+
+// 로그인이 필요한 탭 목록 (탭 이름과 일치해야 함)
+const protectedLinks = ["Upload", "Viewer"];
 
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // 1. 로그인 상태를 관리하는 state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // 2. 컴포넌트 마운트 시 토큰 확인 (로그인 여부 체크)
-    const token = localStorage.getItem("accessToken"); // 저장하신 토큰 키 이름을 넣으세요
+    const token = localStorage.getItem("accessToken");
     if (token) {
       setIsLoggedIn(true);
     }
@@ -33,12 +35,24 @@ export function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // 3. 로그아웃 처리 함수
   const handleLogout = () => {
-    localStorage.removeItem("accessToken"); // 토큰 삭제
+    localStorage.removeItem("accessToken");
     setIsLoggedIn(false);
     alert("로그아웃 되었습니다.");
-    router.push("/"); // 메인으로 이동
+    router.push("/");
+  };
+
+  const handleNavClick = (e: React.MouseEvent, link: { name: string; href: string }) => {
+    if (protectedLinks.includes(link.name)) {
+      e.preventDefault();
+
+      if (!isLoggedIn) {
+        alert("로그인이 필요한 서비스입니다.");
+        router.push("/sign-in");
+      } else {
+        router.push(link.href); // 현재 탭에서 이동
+      }
+    }
   };
 
   return (
@@ -64,13 +78,18 @@ export function Navigation() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-12">
             {navLinks.map((link) => (
-              <a key={link.name} href={link.href} className="text-sm text-foreground/70 hover:text-foreground">
+              <a
+                key={link.name}
+                href={link.href}
+                onClick={(e) => handleNavClick(e, link)}
+                className="text-sm text-foreground/70 hover:text-foreground cursor-pointer transition-colors"
+              >
                 {link.name}
               </a>
             ))}
           </div>
 
-          {/* 4. 로그인 상태에 따른 조건부 렌더링 (Desktop) */}
+          {/* User Auth Buttons */}
           <div className="hidden md:flex items-center gap-4">
             {isLoggedIn ? (
               <>
@@ -102,9 +121,26 @@ export function Navigation() {
             {isMobileMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
-      </nav>
 
-      {/* Mobile Menu Overlay (생략 - 내부 버튼에도 isLoggedIn 조건 동일하게 적용 가능) */}
+        {/* Mobile Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-foreground/10 p-6 flex flex-col gap-4 bg-background/95">
+            {navLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.href}
+                onClick={(e) => {
+                  handleNavClick(e, link);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="text-lg font-medium"
+              >
+                {link.name}
+              </a>
+            ))}
+          </div>
+        )}
+      </nav>
     </header>
   );
 }
