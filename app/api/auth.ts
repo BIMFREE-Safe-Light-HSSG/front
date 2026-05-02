@@ -16,7 +16,7 @@ export const signin = async (email, password) => {
   return response.data; // 성공 시 반환되는 '사용자 정보'
 };
 export const signup = async (email, password,name) => {
-  console.log("전송 시작 주소:", `${API_URL}/auth/signup`);
+
   const response = await axios.post(`${API_URL}/auth/signup`, {
     email: email,       // 이미지의 'email' 필드명과 일치해야 함
     password: password,

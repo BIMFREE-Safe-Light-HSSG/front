@@ -26,7 +26,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BIM-FREE SAFE(LIGHT)SCENEGRAPH",
+  title: "BIM-FREE-SAFE(LIGHT)SCENEGRAPH",
   description:
     "BIM-FREE 디지털 트윈 기반 건물 안전 관리 및 화재 대응 플랫폼",
   generator: "v0.app",
