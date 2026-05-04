@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Menu, X, User } from "lucide-react";
+import { Menu, X, User, Flame } from "lucide-react";
+import { DarkModeToggle } from "../ui/darkmode-toggle";
 
 // 네비게이션 링크 설정
 const navLinks = [
   { name: "Features", href: "#features" },
-  { name: "Upload", href: "/upload" },           // 명칭 및 경로 수정
-  { name: "Viewer", href: "/viewer" },           // 로그인 필요
+  { name: "Upload", href: "/upload" }, // 명칭 및 경로 수정
+  { name: "Viewer", href: "/viewer" }, // 로그인 필요
   { name: "Developers(🚧developing🚧)", href: "#developers" },
 ];
 
@@ -20,9 +22,13 @@ export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
 
   useEffect(() => {
+    setIsMounted(true);
+
     const token = localStorage.getItem("accessToken");
     if (token) {
       setIsLoggedIn(true);
@@ -35,6 +41,9 @@ export function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const currentTheme = isMounted ? (resolvedTheme ?? "light") : "light";
+  const nextTheme = currentTheme === "dark" ? "light" : "dark";
+
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
     setIsLoggedIn(false);
@@ -42,7 +51,10 @@ export function Navigation() {
     router.push("/");
   };
 
-  const handleNavClick = (e: React.MouseEvent, link: { name: string; href: string }) => {
+  const handleNavClick = (
+    e: React.MouseEvent,
+    link: { name: string; href: string },
+  ) => {
     if (protectedLinks.includes(link.name)) {
       e.preventDefault();
 
@@ -68,11 +80,19 @@ export function Navigation() {
             : "bg-transparent max-w-[1400px]"
         }`}
       >
-        <div className={`flex items-center justify-between px-6 lg:px-8 ${isScrolled ? "h-14" : "h-20"}`}>
+        <div
+          className={`flex items-center justify-between px-6 lg:px-8 ${isScrolled ? "h-14" : "h-20"}`}
+        >
           {/* Logo */}
           <a href="/" className="flex items-center gap-2 group">
-            <span className={`font-display tracking-tight ${isScrolled ? "text-xl" : "text-2xl"}`}>Demo</span>
-            <span className="text-muted-foreground font-mono text-[10px]">TM</span>
+            <span
+              className={`font-display tracking-tight ${isScrolled ? "text-xl" : "text-2xl"}`}
+            >
+              Demo
+            </span>
+            <span className="text-muted-foreground font-mono text-[10px]">
+              TM
+            </span>
           </a>
 
           {/* Desktop Navigation */}
@@ -89,6 +109,10 @@ export function Navigation() {
             ))}
           </div>
 
+          <div className="hidden md:flex items-center gap-2">
+            <DarkModeToggle />
+          </div>
+
           {/* User Auth Buttons */}
           <div className="hidden md:flex items-center gap-4">
             {isLoggedIn ? (
@@ -99,17 +123,27 @@ export function Navigation() {
                 >
                   Logout
                 </button>
-                <Button size="sm" className="rounded-full bg-secondary text-foreground">
+                <Button
+                  size="sm"
+                  className="rounded-full bg-secondary text-foreground"
+                >
                   <User className="w-4 h-4 mr-2" />
                   My Page
                 </Button>
               </>
             ) : (
               <>
-                <a href="/sign-in" className="text-sm text-foreground/70 hover:text-foreground">
+                <a
+                  href="/sign-in"
+                  className="text-sm text-foreground/70 hover:text-foreground"
+                >
                   Sign in
                 </a>
-                <Button size="sm" asChild className="bg-foreground text-background rounded-full px-6">
+                <Button
+                  size="sm"
+                  asChild
+                  className="bg-foreground text-background rounded-full px-6"
+                >
                   <a href="/sign-up">Sign up</a>
                 </Button>
               </>
@@ -117,7 +151,10 @@ export function Navigation() {
           </div>
 
           {/* Mobile Menu Button */}
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2">
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2"
+          >
             {isMobileMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
@@ -138,6 +175,7 @@ export function Navigation() {
                 {link.name}
               </a>
             ))}
+            <DarkModeToggle />
           </div>
         )}
       </nav>
