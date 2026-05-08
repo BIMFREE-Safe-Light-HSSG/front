@@ -25,7 +25,6 @@
 
 플랫폼은 데이터의 유입부터 전술적 활용까지 **5가지 수직적 레벨(Floor)** 로 운영됩니다.
 
-![features Section](./public/features.jpeg)
 
 <br>
 
