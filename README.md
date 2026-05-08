@@ -7,7 +7,7 @@
 
 <br>
 
-![home Section](./public/home.jpeg)
+![home Section](./public/home.png)
 
 ---
 
@@ -38,11 +38,11 @@
 
 * 업로드 화면
 
-![upload Section](./public/upload.jpeg)
+![upload Section](./public/upload.png)
 
 * 뷰어 화면
 
-![viewer Section](./public/viewer.jpeg)
+![viewer Section](./public/viewer.png)
 
 <br>
 
