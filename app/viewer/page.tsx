@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,15 +18,55 @@ export default function ViewerPage() {
   const [loading, setLoading] = useState(true);
   const [isEmergency, setIsEmergency] = useState(false);
 
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) {
-      alert("로그인이 필요합니다.");
-      router.push("/sign-in");
-    } else {
-      setLoading(false);
+const SAMPLE_URL = "/api/pointcloud-sample"
+
+const FacilityPointCloudDeck = dynamic(
+  () =>
+    import("@/components/facility-viewer/FacilityPointCloudDeck").then((m) => m.FacilityPointCloudDeck),
+  { ssr: false },
+)
+
+export default function FacilityViewerPage() {
+  const [cloud, setCloud] = useState<FacilityPointCloud | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const loadBundledSample = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch(SAMPLE_URL, { cache: "no-store", signal })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || `${res.status} ${res.statusText}`)
     }
-  }, [router]);
+    const buf = await res.arrayBuffer()
+    return parseFacilityPointCloudNpy(buf, {
+      meta: { fileName: "processed_pointcloud.npy", source: "app/api sample" },
+    })
+  }, [])
+
+  useEffect(() => {
+    const ac = new AbortController()
+    setBusy(true)
+    setError(null)
+    loadBundledSample(ac.signal)
+      .then((c) => {
+        if (!ac.signal.aborted) {
+          setCloud(c)
+        }
+      })
+      .catch((e) => {
+        if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+          return
+        }
+        setCloud(null)
+        setError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) {
+          setBusy(false)
+        }
+      })
+    return () => ac.abort()
+  }, [loadBundledSample])
 
   if (loading) return (
     <div className="min-h-screen bg-[#fffafa] flex items-center justify-center font-mono text-xs tracking-[0.5em] text-red-900/40">

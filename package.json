@@ -4,12 +4,17 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "build:webpack": "next build --webpack",
     "dev": "next dev",
+    "dev:webpack": "next dev --webpack",
     "lint": "eslint .",
     "start": "next start"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@loaders.gl/core": "^4.4.1",
+    "@loaders.gl/obj": "^4.4.1",
+    "@loaders.gl/textures": "^4.4.1",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -45,6 +50,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "deck.gl": "^9.3.2",
     "embla-carousel-react": "8.5.1",
     "expo": "latest",
     "expo-asset": "latest",

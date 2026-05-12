@@ -31,6 +31,8 @@ export function Navigation() {
   });
 
   useEffect(() => {
+    setIsMounted(true);
+
     const token = localStorage.getItem("accessToken");
     if (token) setIsLoggedIn(true);
 
@@ -41,6 +43,9 @@ export function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const currentTheme = isMounted ? (resolvedTheme ?? "light") : "light";
+  const nextTheme = currentTheme === "dark" ? "light" : "dark";
+
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
     setIsLoggedIn(false);
@@ -48,7 +53,10 @@ export function Navigation() {
     router.push("/");
   };
 
-  const handleNavClick = (e: React.MouseEvent, link: { name: string; href: string }) => {
+  const handleNavClick = (
+    e: React.MouseEvent,
+    link: { name: string; href: string },
+  ) => {
     if (protectedLinks.includes(link.name)) {
       e.preventDefault();
       if (!isLoggedIn) {
