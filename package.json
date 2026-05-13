@@ -11,6 +11,9 @@
     "start": "next start"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.3.2",
+    "@deck.gl/layers": "^9.3.2",
+    "@deck.gl/react": "^9.3.2",
     "@hookform/resolvers": "^3.10.0",
     "@loaders.gl/core": "^4.4.1",
     "@loaders.gl/obj": "^4.4.1",
