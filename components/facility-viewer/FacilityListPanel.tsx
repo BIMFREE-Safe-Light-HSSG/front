@@ -1,16 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import { ArrowRight } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { LiquidGlassPageShell } from "@/components/layout/liquid-glass-page-shell"
+import { LiquidGlassSectionHeader } from "@/components/layout/liquid-glass-section-header"
 import type { FacilitiesListResponse } from "@/lib/facility-list-types"
 
 export function FacilityListPanel() {
@@ -18,7 +13,6 @@ export function FacilityListPanel() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  /** 시설 메타만 JSON으로 받음. 포인트 .npy는 `/viewer/[dataId]`에서만 요청합니다. */
   const load = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch("/api/facilities", { cache: "no-store", signal })
     if (!res.ok) {
@@ -50,51 +44,54 @@ export function FacilityListPanel() {
   }, [load])
 
   return (
-    <div className="container mx-auto flex flex-col gap-6 px-4 py-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">시설 포인트 클라우드</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          관리 중인 시설을 선택하면 해당 데이터 슬롯의 포인트 클라우드를 봅니다. (현재는 샘플 목록·
-          <code className="text-xs">/api/pointcloud/1~3</code> 연동)
-        </p>
-      </div>
+    <LiquidGlassPageShell maxWidth="5xl" glassClassName="mx-auto">
+      <LiquidGlassSectionHeader
+        eyebrow="Facility Registry"
+        title={
+          <>
+            Point <span className="text-red-800/25 [-webkit-text-stroke:1px_#991b1b]">Cloud</span>
+          </>
+        }
+        description="관리 중인 시설을 선택하면 해당 슬롯의 포인트 클라우드를 봅니다. (샘플: /api/pointcloud/1~3)"
+      />
 
       {error ? (
-        <p className="text-destructive text-sm" role="alert">
+        <p className="text-destructive mb-6 text-sm" role="alert">
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="text-muted-foreground text-sm">목록 불러오는 중…</p>
+        <p className="font-mono text-xs tracking-widest text-zinc-400 uppercase">Loading facilities…</p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {(data?.facilities ?? []).map((f) => (
             <li key={f.id}>
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardHeader>
-                  <CardTitle>{f.name}</CardTitle>
-                  {f.description ? <CardDescription>{f.description}</CardDescription> : null}
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground font-mono text-xs">
-                    dataId: {f.dataId} · 시설 id: {f.id}
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Link
-                    prefetch={false}
-                    href={`/viewer/${f.dataId}`}
-                    className="text-primary text-sm font-medium underline-offset-4 hover:underline"
-                  >
-                    뷰어 열기 →
-                  </Link>
-                </CardFooter>
-              </Card>
+              <Link
+                prefetch={false}
+                href={`/viewer/${f.dataId}`}
+                className="group flex h-full flex-col rounded-3xl border border-red-900/10 bg-white/40 p-6 shadow-sm transition-all hover:border-red-500/30 hover:bg-white/60 hover:shadow-md"
+              >
+                <h2 className="text-lg font-black tracking-tight text-zinc-900 uppercase group-hover:text-red-950">
+                  {f.name}
+                </h2>
+                {f.description ? (
+                  <p className="text-muted-foreground mt-2 flex-1 text-sm leading-relaxed">{f.description}</p>
+                ) : (
+                  <div className="flex-1" />
+                )}
+                <p className="mt-4 font-mono text-[10px] tracking-wider text-red-900/50 uppercase">
+                  dataId {f.dataId} · {f.id}
+                </p>
+                <span className="mt-4 inline-flex items-center gap-2 text-xs font-bold tracking-widest text-red-950 uppercase">
+                  Open viewer
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                </span>
+              </Link>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </LiquidGlassPageShell>
   )
 }

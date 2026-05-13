@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Menu, X, User, Gem } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "next-themes";
 
 const navLinks = [
   { name: "Features", href: "#features" },
@@ -24,6 +25,12 @@ export function Navigation() {
   const router = useRouter();
   const pathname = usePathname();
   const isHomePage = pathname === "/";
+  const [isMounted, setIsMounted] = useState(false);
+  const { resolvedTheme } = useTheme();
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const displayLinks = navLinks.filter((link) => {
     if (link.name === "Features" && !isHomePage) return false;
@@ -90,9 +97,10 @@ export function Navigation() {
     >
       <nav
         className={`mx-auto transition-all duration-700 ease-in-out relative
-          ${isScrolled || isMobileMenuOpen
-            ? "max-w-[1200px] rounded-[32px] shadow-[0_20px_40px_rgba(153,27,27,0.1)]"
-            : "max-w-[1400px] rounded-none"
+          ${
+            isScrolled || isMobileMenuOpen
+              ? "max-w-[1200px] rounded-[32px] shadow-[0_20px_40px_rgba(153,27,27,0.1)]"
+              : "max-w-[1400px] rounded-none"
           }
           /* Liquid Glass 테마 색상 적용: 투명한 아이보리 레드 */
           bg-white/40 backdrop-blur-[24px] 
@@ -103,20 +111,25 @@ export function Navigation() {
         {/* 상단 빛 반사 효과 (레드 틴트 추가) */}
         <div className="absolute inset-0 bg-gradient-to-br from-red-50/30 to-transparent pointer-events-none" />
 
-        <div className={`relative z-10 flex items-center justify-between px-10 transition-all duration-500 ${isScrolled ? "h-16" : "h-24"}`}>
-
+        <div
+          className={`relative z-10 flex items-center justify-between px-10 transition-all duration-500 ${isScrolled ? "h-16" : "h-24"}`}
+        >
           {/* Logo Section */}
           <a href="/" className="flex items-center gap-2 group shrink-0">
             <div className="flex flex-col justify-center leading-none">
-              <span className={`font-display font-bold tracking-tight transition-all duration-500 ${
-                isScrolled ? "text-lg" : "text-2xl"
-              } text-zinc-900 group-hover:text-red-600`}>
+              <span
+                className={`font-display font-bold tracking-tight transition-all duration-500 ${
+                  isScrolled ? "text-lg" : "text-2xl"
+                } text-zinc-900 group-hover:text-red-600`}
+              >
                 BIM-Free
               </span>
               <div className="flex items-start">
-                <span className={`font-display tracking-tighter opacity-60 transition-all duration-500 ${
-                  isScrolled ? "text-[10px]" : "text-[12px]"
-                } text-red-900`}>
+                <span
+                  className={`font-display tracking-tighter opacity-60 transition-all duration-500 ${
+                    isScrolled ? "text-[10px]" : "text-[12px]"
+                  } text-red-900`}
+                >
                   Safe(Light)HSSG
                 </span>
                 <Gem size={8} className="ml-1 mt-0.5 text-red-600 opacity-40" />
@@ -160,17 +173,27 @@ export function Navigation() {
                 >
                   Logout
                 </button>
-                <Button size="sm" className="rounded-full bg-red-950 text-white px-6 h-10 hover:bg-black shadow-lg transition-all active:scale-95 border-none">
+                <Button
+                  size="sm"
+                  className="rounded-full bg-red-950 text-white px-6 h-10 hover:bg-black shadow-lg transition-all active:scale-95 border-none"
+                >
                   <User className="w-4 h-4 mr-2" />
                   My Page
                 </Button>
               </>
             ) : (
               <>
-                <a href="/sign-in" className="text-xs text-zinc-400 hover:text-red-600 font-bold transition-colors uppercase tracking-widest">
+                <a
+                  href="/sign-in"
+                  className="text-xs text-zinc-400 hover:text-red-600 font-bold transition-colors uppercase tracking-widest"
+                >
                   Sign in
                 </a>
-                <Button size="sm" asChild className="bg-white/60 backdrop-blur-md text-red-950 border border-red-900/20 rounded-full px-8 h-11 hover:bg-red-50 shadow-sm transition-all active:scale-95">
+                <Button
+                  size="sm"
+                  asChild
+                  className="bg-white/60 backdrop-blur-md text-red-950 border border-red-900/20 rounded-full px-8 h-11 hover:bg-red-50 shadow-sm transition-all active:scale-95"
+                >
                   <a href="/sign-up">Sign up</a>
                 </Button>
               </>
@@ -182,7 +205,11 @@ export function Navigation() {
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden p-3 rounded-2xl bg-red-50 hover:bg-red-100 transition-colors text-red-900"
           >
-            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {isMobileMenuOpen ? (
+              <X className="w-5 h-5" />
+            ) : (
+              <Menu className="w-5 h-5" />
+            )}
           </button>
         </div>
 

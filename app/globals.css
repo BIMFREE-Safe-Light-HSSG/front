@@ -507,3 +507,44 @@
     background-size: 100% 100%, 8px 8px;
   }
 }
+
+/* Liquid glass page motion (upload / hero / viewer) */
+@keyframes bim-blob {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -60px) scale(1.1);
+  }
+  66% {
+    transform: translate(-30px, 30px) scale(0.9);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes bim-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-blob {
+  animation: bim-blob 15s infinite ease-in-out;
+}
+
+.animate-spin-slow {
+  animation: bim-spin-slow 12s linear infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}

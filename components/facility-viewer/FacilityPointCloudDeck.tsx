@@ -200,11 +200,11 @@ export function FacilityPointCloudDeck({
   return (
     <div
       className={cn(
-        "relative h-[70vh] w-full min-h-[400px] rounded-lg border border-border",
+        "relative h-[70vh] w-full min-h-[400px] rounded-lg border border-red-900/10",
         className,
       )}
     >
-      <div className="bg-background/90 absolute left-2 top-2 z-10 w-64 space-y-2 rounded-md border border-border p-3 shadow-sm backdrop-blur-sm">
+      <div className="absolute left-2 top-2 z-10 w-64 space-y-2 rounded-2xl border border-red-900/15 bg-white/85 p-3 shadow-sm backdrop-blur-md">
         <div className="space-y-1">
           <Label htmlFor="semantic-filter" className="text-xs">
             semantic_id 검색
@@ -261,7 +261,7 @@ export function FacilityPointCloudDeck({
         {cloud && cloud.pointCount > 0 ? (
           <div className="space-y-1">
             <p className="text-muted-foreground text-[11px]">데이터에 있는 ID (클릭 → 해당만)</p>
-            <ScrollArea className="h-32 rounded border border-border/60">
+            <ScrollArea className="h-32 rounded-xl border border-red-900/10">
               <ul className="space-y-0.5 p-1">
                 {semanticHistogram.map(({ id, count }) => (
                   <li key={id}>
@@ -283,12 +283,12 @@ export function FacilityPointCloudDeck({
           </div>
         ) : null}
         {cloud && cloud.pointCount > 0 ? (
-          <p className="text-muted-foreground border-border border-t pt-2 text-[11px]">
+          <p className="text-muted-foreground border-t border-red-900/10 pt-2 text-[11px]">
             화면 {displayCount.toLocaleString()} / 전체 {cloud.pointCount.toLocaleString()}점
           </p>
         ) : null}
       </div>
-      <div className="bg-background/90 absolute right-2 top-2 z-10 flex gap-1 rounded-md border border-border p-1 shadow-sm backdrop-blur-sm">
+      <div className="absolute right-2 top-2 z-10 flex gap-1 rounded-2xl border border-red-900/15 bg-white/85 p-1 shadow-sm backdrop-blur-md">
         <Button
           type="button"
           size="sm"
@@ -309,7 +309,7 @@ export function FacilityPointCloudDeck({
         </Button>
       </div>
       {planLikeDrawing && bounds ? (
-        <div className="bg-background/90 absolute right-2 top-14 z-10 w-56 space-y-2 rounded-md border border-border p-3 shadow-sm backdrop-blur-sm">
+        <div className="absolute right-2 top-14 z-10 w-56 space-y-2 rounded-2xl border border-red-900/15 bg-white/85 p-3 shadow-sm backdrop-blur-md">
           <div className="space-y-1">
             <Label className="text-xs leading-tight">
               천장 제거 (Z ≤ 이 값만 표시)
