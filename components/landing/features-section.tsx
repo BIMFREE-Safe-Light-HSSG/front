@@ -1,499 +1,205 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  UploadCloud,
+  Database,
+  Building2,
+  Users,
+  ShieldAlert,
+  ArrowRight,
+  Compass,
+  Gem,
+  Hexagon
+} from "lucide-react";
 
-const features = [
+const roadmapFeatures = [
   {
-    number: "01",
-    title: "Instant Deployment",
-    description:
-      "Push to production in seconds. Our edge network ensures your applications load instantly, anywhere in the world.",
-    visual: "deploy",
+    floor: "01F",
+    title: "Data Acquisition",
+    description: "지상 1층: 모든 데이터의 진입점. 시설 관리자가 현장의 2D Scan 데이터를 업로드하여 디지털 기반을 다집니다.",
+    visual: "upload",
+    status: "ENTRY_LEVEL"
   },
   {
-    number: "02",
-    title: "AI-Native Workflows",
-    description:
-      "Build intelligent applications with built-in AI capabilities. From inference to training, everything scales automatically.",
-    visual: "ai",
+    floor: "02F",
+    title: "3D-HSSG Generation",
+    description: "데이터 프로세싱 층. AI가 정밀한 Digital Twin을 생성하여 건물의 가상 골조를 완성합니다.",
+    visual: "generate",
+    status: "CORE_BUILDING"
   },
   {
-    number: "03",
-    title: "Real-time Collaboration",
-    description:
-      "Work together seamlessly. Live preview, instant feedback, and version control that actually makes sense.",
-    visual: "collab",
+    floor: "03F",
+    title: "Facility Management",
+    description: "운영 및 관리 층. 생성된 뷰어를 통해 건물 내부의 배관, 설비 등 보이지 않는 영역을 입체적으로 관리합니다.",
+    visual: "manage",
+    status: "OPERATIONAL"
   },
   {
-    number: "04",
-    title: "Enterprise Security",
-    description:
-      "Bank-grade encryption, SOC 2 compliance, and granular access controls. Your data stays yours.",
-    visual: "security",
+    floor: "04F",
+    title: "Strategic Sharing",
+    description: "협력 및 공유 층. 관제 데이터를 소방 대응팀과 실시간 공유하여 입체적인 재난 대비망을 구축합니다.",
+    visual: "share",
+    status: "NETWORK_STABLE"
+  },
+  {
+    floor: "EVAC",
+    title: "Emergency Protocol",
+    description: "최상층/비상 제어. 화재 발생 시 즉각 재난 모드로 전환되어 생존을 위한 최적의 데이터를 출력합니다.",
+    visual: "emergency",
+    status: "CRITICAL_PATH"
   },
 ];
 
-function DeployVisual() {
-  return (
-    <svg viewBox="0 0 200 160" className="w-full h-full">
-      <defs>
-        <clipPath id="deployClip">
-          <rect x="30" y="20" width="140" height="120" rx="4" />
-        </clipPath>
-      </defs>
+// 수정된 StepVisual: 활성화(isActive) 시 무조건 흰색 선으로 표시
+function StepVisual({ type, isEmergency, isActive }: { type: string; isEmergency: boolean; isActive: boolean }) {
+  const baseClass = `w-12 h-12 transition-all duration-700 ${isActive ? "scale-110 opacity-100" : "scale-100 opacity-20"}`;
 
-      {/* Container */}
-      <rect
-        x="30"
-        y="20"
-        width="140"
-        height="120"
-        rx="4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+  // 핵심 수정: isActive일 때 text-white를 적용하여 갈색 배경 위에서 흰색 선이 보이게 함
+  const colorClass = isActive
+    ? "text-white"
+    : isEmergency
+    ? "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+    : "text-red-950";
 
-      {/* Animated bars */}
-      <g clipPath="url(#deployClip)">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <rect
-            key={i}
-            x="40"
-            y={35 + i * 16}
-            width="120"
-            height="10"
-            rx="2"
-            fill="currentColor"
-            opacity="0.15"
-          >
-            <animate
-              attributeName="opacity"
-              values="0.15;0.8;0.15"
-              dur="2s"
-              begin={`${i * 0.15}s`}
-              repeatCount="indefinite"
-            />
-            <animate
-              attributeName="width"
-              values="20;120;20"
-              dur="2s"
-              begin={`${i * 0.15}s`}
-              repeatCount="indefinite"
-            />
-          </rect>
-        ))}
-      </g>
-
-      {/* Progress indicator */}
-      <circle cx="100" cy="155" r="3" fill="currentColor" opacity="0.3">
-        <animate
-          attributeName="opacity"
-          values="0.3;1;0.3"
-          dur="1s"
-          repeatCount="indefinite"
-        />
-      </circle>
-    </svg>
-  );
-}
-
-function AIVisual() {
-  return (
-    <svg viewBox="0 0 200 160" className="w-full h-full">
-      {/* Central node */}
-      <circle cx="100" cy="80" r="12" fill="currentColor">
-        <animate
-          attributeName="r"
-          values="12;14;12"
-          dur="2s"
-          repeatCount="indefinite"
-        />
-      </circle>
-
-      {/* Orbiting nodes */}
-      {[0, 1, 2, 3, 4, 5].map((i) => {
-        const angle = i * 60 * (Math.PI / 180);
-        const radius = 50;
-        return (
-          <g key={i}>
-            {/* Connection line */}
-            <line
-              suppressHydrationWarning
-              x1="100"
-              y1="80"
-              x2={100 + Math.cos(angle) * radius}
-              y2={80 + Math.sin(angle) * radius}
-              stroke="currentColor"
-              strokeWidth="1"
-              opacity="0.3"
-            >
-              <animate
-                attributeName="opacity"
-                values="0.3;0.8;0.3"
-                dur="2s"
-                begin={`${i * 0.3}s`}
-                repeatCount="indefinite"
-              />
-            </line>
-
-            {/* Outer node */}
-            <circle
-              cx={100 + Math.cos(angle) * radius}
-              cy={80 + Math.sin(angle) * radius}
-              r="6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <animate
-                attributeName="r"
-                values="6;8;6"
-                dur="2s"
-                begin={`${i * 0.3}s`}
-                repeatCount="indefinite"
-              />
-            </circle>
-          </g>
-        );
-      })}
-
-      {/* Pulse rings */}
-      <circle
-        cx="100"
-        cy="80"
-        r="30"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
-        opacity="0"
-      >
-        <animate
-          attributeName="r"
-          values="20;60"
-          dur="2s"
-          repeatCount="indefinite"
-        />
-        <animate
-          attributeName="opacity"
-          values="0.5;0"
-          dur="2s"
-          repeatCount="indefinite"
-        />
-      </circle>
-    </svg>
-  );
-}
-
-function CollabVisual() {
-  return (
-    <svg viewBox="0 0 200 160" className="w-full h-full">
-      {/* User A */}
-      <g>
-        <rect
-          x="30"
-          y="50"
-          width="50"
-          height="60"
-          rx="4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        />
-        <text
-          x="55"
-          y="85"
-          textAnchor="middle"
-          fontSize="20"
-          fontFamily="monospace"
-          fill="currentColor"
-        >
-          A
-        </text>
-        <circle
-          cx="55"
-          cy="35"
-          r="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        />
-      </g>
-
-      {/* User B */}
-      <g>
-        <rect
-          x="120"
-          y="50"
-          width="50"
-          height="60"
-          rx="4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        />
-        <text
-          x="145"
-          y="85"
-          textAnchor="middle"
-          fontSize="20"
-          fontFamily="monospace"
-          fill="currentColor"
-        >
-          B
-        </text>
-        <circle
-          cx="145"
-          cy="35"
-          r="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-        />
-      </g>
-
-      {/* Connection */}
-      <line
-        x1="80"
-        y1="80"
-        x2="120"
-        y2="80"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeDasharray="4 4"
-      >
-        <animate
-          attributeName="stroke-dashoffset"
-          values="0;-8"
-          dur="0.5s"
-          repeatCount="indefinite"
-        />
-      </line>
-
-      {/* Data packet */}
-      <circle r="4" fill="currentColor">
-        <animateMotion dur="1.5s" repeatCount="indefinite">
-          <mpath href="#dataPath" />
-        </animateMotion>
-      </circle>
-      <path id="dataPath" d="M 80 80 L 120 80" fill="none" />
-
-      {/* Sync indicator */}
-      <g transform="translate(100, 130)">
-        <circle r="6" fill="none" stroke="currentColor" strokeWidth="2">
-          <animate
-            attributeName="r"
-            values="6;10;6"
-            dur="1s"
-            repeatCount="indefinite"
-          />
-          <animate
-            attributeName="opacity"
-            values="1;0.3;1"
-            dur="1s"
-            repeatCount="indefinite"
-          />
-        </circle>
-      </g>
-    </svg>
-  );
-}
-
-function SecurityVisual() {
-  return (
-    <svg viewBox="0 0 200 160" className="w-full h-full">
-      {/* Shield */}
-      <path
-        d="M 100 20 L 150 40 L 150 90 Q 150 130 100 145 Q 50 130 50 90 L 50 40 Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-
-      {/* Inner shield */}
-      <path
-        d="M 100 35 L 135 50 L 135 85 Q 135 115 100 128 Q 65 115 65 85 L 65 50 Z"
-        fill="currentColor"
-        opacity="0.1"
-      >
-        <animate
-          attributeName="opacity"
-          values="0.1;0.2;0.1"
-          dur="2s"
-          repeatCount="indefinite"
-        />
-      </path>
-
-      {/* Lock icon */}
-      <rect x="85" y="70" width="30" height="25" rx="3" fill="currentColor" />
-      <path
-        d="M 90 70 L 90 60 Q 90 50 100 50 Q 110 50 110 60 L 110 70"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-
-      {/* Keyhole */}
-      <circle cx="100" cy="80" r="4" fill="white" />
-      <rect x="98" y="82" width="4" height="8" fill="white" />
-
-      {/* Scan lines */}
-      <line
-        x1="60"
-        y1="60"
-        x2="140"
-        y2="60"
-        stroke="currentColor"
-        strokeWidth="1"
-        opacity="0"
-      >
-        <animate
-          attributeName="y1"
-          values="40;120;40"
-          dur="3s"
-          repeatCount="indefinite"
-        />
-        <animate
-          attributeName="y2"
-          values="40;120;40"
-          dur="3s"
-          repeatCount="indefinite"
-        />
-        <animate
-          attributeName="opacity"
-          values="0;0.5;0"
-          dur="3s"
-          repeatCount="indefinite"
-        />
-      </line>
-    </svg>
-  );
-}
-
-function AnimatedVisual({ type }: { type: string }) {
   switch (type) {
-    case "deploy":
-      return <DeployVisual />;
-    case "ai":
-      return <AIVisual />;
-    case "collab":
-      return <CollabVisual />;
-    case "security":
-      return <SecurityVisual />;
-    default:
-      return <DeployVisual />;
+    case "upload": return <UploadCloud className={`${baseClass} ${colorClass}`} strokeWidth={1} />;
+    case "generate": return <Database className={`${baseClass} ${colorClass}`} strokeWidth={1} />;
+    case "manage": return <Building2 className={`${baseClass} ${colorClass}`} strokeWidth={1} />;
+    case "share": return <Users className={`${baseClass} ${colorClass}`} strokeWidth={1} />;
+    case "emergency": return <ShieldAlert className={`${baseClass} ${isActive ? "text-white" : isEmergency ? "text-red-600 animate-pulse" : "text-red-950"}`} strokeWidth={1.5} />;
+    default: return <Hexagon className={`${baseClass} ${colorClass}`} strokeWidth={1} />;
   }
 }
 
-function FeatureCard({
-  feature,
-  index,
-}: {
-  feature: (typeof features)[0];
-  index: number;
-}) {
-  const [isVisible, setIsVisible] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setIsVisible(true);
-      },
-      { threshold: 0.2 },
-    );
-
-    if (cardRef.current) observer.observe(cardRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={cardRef}
-      className={`group relative transition-all duration-700 ${
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-      }`}
-      style={{ transitionDelay: `${index * 100}ms` }}
-    >
-      <div className="flex flex-col lg:flex-row gap-8 lg:gap-16 py-12 lg:py-20 border-b border-foreground/10">
-        {/* Number */}
-        <div className="shrink-0">
-          <span className="font-mono text-sm text-muted-foreground">
-            {feature.number}
-          </span>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 grid lg:grid-cols-2 gap-8 items-center">
-          <div>
-            <h3 className="text-3xl lg:text-4xl font-display mb-4 group-hover:translate-x-2 transition-transform duration-500">
-              {feature.title}
-            </h3>
-            <p className="text-lg text-muted-foreground leading-relaxed">
-              {feature.description}
-            </p>
-          </div>
-
-          {/* Visual */}
-          <div className="flex justify-center lg:justify-end">
-            <div className="w-48 h-40 text-foreground">
-              <AnimatedVisual type={feature.visual} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function FeaturesSection() {
-  const [isVisible, setIsVisible] = useState(false);
-  const sectionRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setIsVisible(true);
-      },
-      { threshold: 0.1 },
-    );
-
-    if (sectionRef.current) observer.observe(sectionRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   return (
-    <section id="features" ref={sectionRef} className="relative py-24 lg:py-32">
-      <div className="max-w-350 mx-auto px-6 lg:px-12">
-        {/* Header */}
-        <div className="mb-16 lg:mb-24">
-          <span className="inline-flex items-center gap-3 text-sm font-mono text-muted-foreground mb-6">
-            <span className="w-8 h-px bg-foreground/30" />
-            Capabilities
-          </span>
-          <h2
-            className={`text-4xl lg:text-6xl font-display tracking-tight transition-all duration-700 ${
-              isVisible
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 translate-y-4"
-            }`}
-          >
-            Everything you need.
-            <br />
-            <span className="text-muted-foreground">
-              Nothing you don&apos;t.
-            </span>
-          </h2>
-        </div>
+    <section id="features" className={`relative min-h-screen py-32 lg:py-48 transition-colors duration-1000 overflow-hidden ${
+      isEmergency ? "bg-[#ffebeb]" : "bg-[#fffafa]"
+    }`}>
 
-        {/* Features List */}
-        <div>
-          {features.map((feature, index) => (
-            <FeatureCard key={feature.number} feature={feature} index={index} />
+      {/* 1. Liquid Blobs 배경 (HeroSection과 동일) */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className={`absolute top-[10%] left-[10%] w-[500px] h-[500px] rounded-full mix-blend-multiply filter blur-3xl animate-blob transition-all duration-1000 ${
+          isEmergency ? "bg-red-300/30" : "bg-orange-200/20"
+        }`} />
+        <div className="absolute top-[40%] right-[5%] w-[600px] h-[600px] bg-red-50/40 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000" />
+        <div className={`absolute bottom-[10%] left-[20%] w-[500px] h-[500px] rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000 transition-all duration-1000 ${
+          isEmergency ? "bg-red-400/20" : "bg-red-100/10"
+        }`} />
+      </div>
+
+      {/* 2. 물리적 굴절 SVG 필터 */}
+      <svg style={{ position: "absolute", width: 0, height: 0 }}>
+        <filter id="liquid-refraction-features">
+          <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="20" />
+        </filter>
+      </svg>
+
+      <div className="max-w-6xl mx-auto px-8 relative z-10 w-full">
+
+
+        {/* 로드맵 리스트: 유리 패널 구조 */}
+        <div className="space-y-4 border-t border-red-900/10 pt-10">
+          {roadmapFeatures.map((feature, index) => (
+            <div
+              key={feature.floor}
+              onMouseEnter={() => setActiveIndex(index)}
+              className={`group relative grid lg:grid-cols-12 items-center py-10 lg:py-16 px-8 transition-all duration-700 border border-white/40 shadow-sm ${
+                activeIndex === index 
+                  ? (isEmergency ? "bg-red-500/20 backdrop-blur-xl scale-[1.02] border-red-200" : "bg-white/40 backdrop-blur-xl scale-[1.02] border-white/60") 
+                  : "bg-white/5 backdrop-blur-sm opacity-60"
+              }`}
+              style={{ backdropFilter: activeIndex === index ? "blur(30px) url(#liquid-refraction-features)" : "none" }}
+            >
+              <div className="lg:col-span-1 font-mono text-xs font-bold text-red-900/30">
+                {feature.floor}
+              </div>
+
+              <div className="lg:col-span-7">
+                <h3 className={`text-3xl lg:text-5xl font-bold tracking-tight mb-4 transition-colors ${
+                  activeIndex === index ? (isEmergency ? "text-red-600" : "text-red-950") : "text-red-900/20"
+                }`}>
+                  {feature.title}
+                </h3>
+                <div className={`transition-all duration-700 ${activeIndex === index ? "opacity-100 translate-x-0 h-auto" : "opacity-0 -translate-x-4 h-0 overflow-hidden"}`}>
+                  <p className="text-zinc-500 text-sm max-w-lg leading-relaxed">
+                    {feature.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="lg:col-span-4 flex justify-end">
+                {/* 아이콘 박스: 호버 시 bg-red-950(갈색 톤) 적용 */}
+                <div className={`p-8 transition-all duration-700 rounded-full ${
+                  activeIndex === index ? "bg-red-950 shadow-2xl scale-110" : "bg-transparent"
+                }`}>
+                  <StepVisual
+                    type={feature.visual}
+                    isEmergency={isEmergency}
+                    isActive={activeIndex === index}
+                  />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
+
+        {/* 하단 제어부 */}
+        <div className="mt-32 flex flex-col items-end">
+          <button
+            onClick={() => setIsEmergency(!isEmergency)}
+            className={`group relative flex items-center gap-6 px-12 py-6 transition-all duration-700 border border-white/60 backdrop-blur-md shadow-lg ${
+              isEmergency ? "bg-red-600 text-white" : "bg-red-950 text-white hover:bg-black"
+            }`}
+          >
+            <span className="font-mono text-xs tracking-[0.4em] uppercase font-bold">
+              {isEmergency ? "Protocol Alpha Active" : "Initiate Red Protocol"}
+            </span>
+            <div className={`transition-transform duration-500 ${isEmergency ? "rotate-90" : "group-hover:translate-x-2"}`}>
+              <ArrowRight size={18} />
+            </div>
+            <div className="absolute -bottom-2 -right-2 w-full h-full border border-red-900/10 -z-10 group-hover:bottom-0 group-hover:right-0 transition-all" />
+          </button>
+
+          <div className="mt-8 flex gap-8 font-mono text-[9px] text-red-900/40 tracking-[0.2em]">
+             <div className="flex items-center gap-2">
+                <Gem size={10} className={isEmergency ? "text-red-600 animate-pulse" : ""} />
+                <span>STRUCTURE: CRYSTALLIZED</span>
+             </div>
+             <span>STABILITY: UNBREAKABLE</span>
+          </div>
+        </div>
       </div>
+
+      <style jsx global>{`
+        @keyframes blob {
+          0% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(40px, -60px) scale(1.1); }
+          66% { transform: translate(-30px, 30px) scale(0.9); }
+          100% { transform: translate(0px, 0px) scale(1); }
+        }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .animate-blob {
+          animation: blob 15s infinite ease-in-out;
+        }
+        .animate-spin-slow {
+          animation: spin-slow 12s linear infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </section>
   );
 }
