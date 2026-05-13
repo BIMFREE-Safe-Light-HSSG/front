@@ -7,6 +7,9 @@ export const runtime = "nodejs"
 
 const SAMPLE_FILENAME = "processed_pointcloud.npy"
 
+/**
+ * 단일 데모 파일. 슬롯별 파일은 GET /api/pointcloud/:dataId (data1.npy …) 참고.
+ */
 export async function GET() {
   const filePath = path.join(process.cwd(), "app", "api", SAMPLE_FILENAME)
   try {
