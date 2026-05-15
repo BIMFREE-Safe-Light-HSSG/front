@@ -10,7 +10,8 @@ import {
   OrbitView,
   type OrbitViewState,
 } from "@deck.gl/core"
-import { PointCloudLayer } from "@deck.gl/layers"
+import { PointCloudLayer, PathLayer } from "@deck.gl/layers"
+import { SimpleMeshLayer } from "@deck.gl/mesh-layers"
 
 import { filterInterleavedByMaxZ } from "@/lib/facility-point-cloud/filter-interleaved-z"
 import {
@@ -20,9 +21,20 @@ import {
 } from "@/lib/facility-point-cloud/orbit-view-fit"
 import {
   filterInterleavedBySemanticSet,
+  filterInterleavedExcludingSemanticSet,
   histogramSemanticIds,
   parseSemanticIdList,
 } from "@/lib/facility-point-cloud/semantic-filter"
+import { GLASS_STRUCTURE_SEMANTICS, STRUCTURE_GLASS_STYLE } from "@/lib/facility-mesh/semantic-labels"
+import type { GlassMeshDocument } from "@/lib/facility-mesh/types"
+import {
+  bboxEdgePaths,
+  colorForClass,
+  nodeBounds,
+  semanticIdForClass,
+} from "@/lib/facility-scene-graph/node-utils"
+import { orbitViewStateFromBounds } from "@/lib/facility-scene-graph/orbit-view-from-bounds"
+import type { FacilitySceneNode } from "@/lib/facility-scene-graph/types"
 import type { FacilityPointCloud } from "@/lib/facility-point-cloud/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +59,9 @@ const lighting = new LightingEffect({
 
 export type FacilityPointCloudDeckProps = {
   cloud: FacilityPointCloud | null
+  glassMesh?: GlassMeshDocument | null
+  selectedSceneNode?: FacilitySceneNode | null
+  onClearSceneSelection?: () => void
   pointSize?: number
   className?: string
 }
@@ -61,10 +76,14 @@ function withOrbitConstraints(vs: OrbitViewState, planLikeDrawing: boolean): Orb
 
 export function FacilityPointCloudDeck({
   cloud,
+  glassMesh,
+  selectedSceneNode,
+  onClearSceneSelection,
   pointSize = 2,
   className,
 }: FacilityPointCloudDeckProps) {
   const [planLikeDrawing, setPlanLikeDrawing] = useState(false)
+  const [glassShellEnabled, setGlassShellEnabled] = useState(true)
   const [planZCutMax, setPlanZCutMax] = useState(0)
   const [semanticDraft, setSemanticDraft] = useState("")
   const [semanticAllowed, setSemanticAllowed] = useState<Set<number> | null>(null)
@@ -98,7 +117,28 @@ export function FacilityPointCloudDeck({
   }, [cloud])
 
   useEffect(() => {
+    if (!selectedSceneNode) return
+    const sem =
+      semanticIdForClass(selectedSceneNode.class) ??
+      (selectedSceneNode.source_class ? semanticIdForClass(selectedSceneNode.source_class) : undefined)
+    if (sem !== undefined) {
+      setSemanticAllowed(new Set([sem]))
+      setSemanticDraft(String(sem))
+    }
+    const nodeB = nodeBounds(selectedSceneNode)
+    if (nodeB) {
+      const h = typeof window !== "undefined" ? window.innerHeight : 800
+      setViewState(
+        withOrbitConstraints(orbitViewStateFromBounds(nodeB, h, planLikeDrawing), planLikeDrawing),
+      )
+    }
+  }, [selectedSceneNode, planLikeDrawing])
+
+  useEffect(() => {
     if (!cloud || cloud.pointCount === 0) {
+      return
+    }
+    if (selectedSceneNode) {
       return
     }
     const el = typeof window !== "undefined" ? window : null
@@ -109,7 +149,7 @@ export function FacilityPointCloudDeck({
         planLikeDrawing,
       ),
     )
-  }, [cloud, planLikeDrawing])
+  }, [cloud, planLikeDrawing, selectedSceneNode])
 
   const onViewStateChange = useCallback(
     ({ viewState: vs }: { viewState: OrbitViewState }) => {
@@ -140,33 +180,90 @@ export function FacilityPointCloudDeck({
     return filterInterleavedBySemanticSet(cloud.interleaved, cloud.pointCount, semanticAllowed)
   }, [cloud, semanticAllowed])
 
-  const afterPlanZ = useMemo(() => {
+  const structureExcluded = useMemo(() => {
+    if (!glassShellEnabled || !glassMesh || glassMesh.meshes.length === 0) {
+      return null
+    }
+    return new Set<number>(GLASS_STRUCTURE_SEMANTICS)
+  }, [glassMesh, glassShellEnabled])
+
+  const afterGlassExclude = useMemo(() => {
     if (!afterSemantic) {
+      return null
+    }
+    if (!structureExcluded) {
+      return afterSemantic
+    }
+    return filterInterleavedExcludingSemanticSet(
+      afterSemantic.interleaved,
+      afterSemantic.pointCount,
+      structureExcluded,
+    )
+  }, [afterSemantic, structureExcluded])
+
+  const afterPlanZ = useMemo(() => {
+    if (!afterGlassExclude) {
       return null
     }
     if (!planLikeDrawing) {
       return null
     }
-    return filterInterleavedByMaxZ(afterSemantic.interleaved, afterSemantic.pointCount, planZCutMax)
-  }, [afterSemantic, planLikeDrawing, planZCutMax])
+    return filterInterleavedByMaxZ(afterGlassExclude.interleaved, afterGlassExclude.pointCount, planZCutMax)
+  }, [afterGlassExclude, planLikeDrawing, planZCutMax])
 
   const displayInterleaved =
-    planLikeDrawing && afterPlanZ ? afterPlanZ.interleaved : afterSemantic?.interleaved
+    planLikeDrawing && afterPlanZ ? afterPlanZ.interleaved : afterGlassExclude?.interleaved
   const displayCount =
-    planLikeDrawing && afterPlanZ ? afterPlanZ.pointCount : (afterSemantic?.pointCount ?? 0)
+    planLikeDrawing && afterPlanZ ? afterPlanZ.pointCount : (afterGlassExclude?.pointCount ?? 0)
 
   const applySemanticFilter = useCallback(() => {
     setSemanticAllowed(parseSemanticIdList(semanticDraft))
   }, [semanticDraft])
 
   const layers = useMemo(() => {
-    if (!cloud || cloud.pointCount === 0 || !displayInterleaved) {
-      return []
+    const result: (PointCloudLayer | SimpleMeshLayer)[] = []
+
+    if (glassShellEnabled && glassMesh) {
+      for (const mesh of glassMesh.meshes) {
+        const style = STRUCTURE_GLASS_STYLE[mesh.semanticId]
+        const opacity = style?.opacity ?? mesh.opacity
+        const color = style?.color ?? mesh.color
+        result.push(
+          new SimpleMeshLayer({
+            id: `glass-${mesh.id}`,
+            data: [mesh],
+            mesh: {
+              positions: new Float32Array(mesh.positions),
+              normals: new Float32Array(mesh.normals),
+              indices: new Uint32Array(mesh.indices),
+            },
+            getPosition: [0, 0, 0],
+            getColor: [color[0], color[1], color[2], Math.round(opacity * 255)],
+            coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+            pickable: false,
+            _lighting: "pbr",
+            material: {
+              ambient: 0.55,
+              diffuse: 0.78,
+              shininess: 48,
+              specularColor: [255, 255, 255],
+            },
+            parameters: {
+              depthTest: true,
+              depthMask: false,
+              blend: true,
+              cullFace: false,
+            },
+          }),
+        )
+      }
     }
-    if (displayCount === 0) {
-      return []
+
+    if (!cloud || cloud.pointCount === 0 || !displayInterleaved || displayCount === 0) {
+      return result
     }
-    return [
+
+    result.push(
       new PointCloudLayer({
         id: "facility-point-cloud",
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
@@ -194,8 +291,37 @@ export function FacilityPointCloudDeck({
         pointSize: effectivePointSize,
         sizeUnits: "pixels",
       }),
-    ]
-  }, [cloud, displayCount, displayInterleaved, effectivePointSize])
+    )
+
+    if (selectedSceneNode) {
+      const nodeB = nodeBounds(selectedSceneNode)
+      if (nodeB) {
+        const accent = colorForClass(selectedSceneNode.class)
+        result.push(
+          new PathLayer({
+            id: "scene-graph-selection-bbox",
+            coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+            data: bboxEdgePaths(nodeB),
+            getPath: (d) => d,
+            getColor: accent,
+            getWidth: 2,
+            widthUnits: "pixels",
+            pickable: false,
+          }),
+        )
+      }
+    }
+
+    return result
+  }, [
+    cloud,
+    displayCount,
+    displayInterleaved,
+    effectivePointSize,
+    glassMesh,
+    glassShellEnabled,
+    selectedSceneNode,
+  ])
 
   return (
     <div
@@ -248,6 +374,7 @@ export function FacilityPointCloudDeck({
             onClick={() => {
               setSemanticDraft("")
               setSemanticAllowed(null)
+              onClearSceneSelection?.()
             }}
           >
             전체 보기
@@ -282,31 +409,57 @@ export function FacilityPointCloudDeck({
             </ScrollArea>
           </div>
         ) : null}
+        {selectedSceneNode ? (
+          <p className="rounded-xl bg-red-50 px-2 py-1.5 text-[11px] leading-snug text-red-950">
+            그래프 선택: <span className="font-semibold">{selectedSceneNode.name}</span>
+            <span className="text-red-900/70"> · {selectedSceneNode.class}</span>
+            {selectedSceneNode.status ? (
+              <span className="text-red-900/70"> · {selectedSceneNode.status}</span>
+            ) : null}
+          </p>
+        ) : null}
+        {glassMesh && glassMesh.meshes.length > 0 ? (
+          <p className="text-muted-foreground rounded-xl border border-red-900/10 bg-red-50/40 px-2 py-1.5 text-[11px] leading-snug">
+            천장·바닥·벽 → 글래스 메시 {glassMesh.meshes.length}면
+            {glassShellEnabled ? " (대체 표시)" : " (원본 점 표시)"}
+          </p>
+        ) : null}
         {cloud && cloud.pointCount > 0 ? (
           <p className="text-muted-foreground border-t border-red-900/10 pt-2 text-[11px]">
             화면 {displayCount.toLocaleString()} / 전체 {cloud.pointCount.toLocaleString()}점
           </p>
         ) : null}
       </div>
-      <div className="absolute right-2 top-2 z-10 flex gap-1 rounded-2xl border border-red-900/15 bg-white/85 p-1 shadow-sm backdrop-blur-md">
-        <Button
-          type="button"
-          size="sm"
-          variant={planLikeDrawing ? "outline" : "secondary"}
-          disabled={!cloud || cloud.pointCount === 0}
-          onClick={() => setPlanLikeDrawing(false)}
-        >
-          3D
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={planLikeDrawing ? "secondary" : "outline"}
-          disabled={!cloud || cloud.pointCount === 0}
-          onClick={() => setPlanLikeDrawing(true)}
-        >
-          평면도
-        </Button>
+      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-2">
+        <div className="flex gap-1 rounded-2xl border border-red-900/15 bg-white/85 p-1 shadow-sm backdrop-blur-md">
+          <Button
+            type="button"
+            size="sm"
+            variant={glassShellEnabled ? "secondary" : "outline"}
+            disabled={!glassMesh || glassMesh.meshes.length === 0}
+            onClick={() => setGlassShellEnabled((v) => !v)}
+          >
+            Glass
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={planLikeDrawing ? "outline" : "secondary"}
+            disabled={!cloud || cloud.pointCount === 0}
+            onClick={() => setPlanLikeDrawing(false)}
+          >
+            3D
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={planLikeDrawing ? "secondary" : "outline"}
+            disabled={!cloud || cloud.pointCount === 0}
+            onClick={() => setPlanLikeDrawing(true)}
+          >
+            평면도
+          </Button>
+        </div>
       </div>
       {planLikeDrawing && bounds ? (
         <div className="absolute right-2 top-14 z-10 w-56 space-y-2 rounded-2xl border border-red-900/15 bg-white/85 p-3 shadow-sm backdrop-blur-md">

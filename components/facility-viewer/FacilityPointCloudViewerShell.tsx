@@ -5,10 +5,14 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 
+import { FacilitySceneGraphPanel } from "@/components/facility-viewer/FacilitySceneGraphPanel"
 import { LiquidGlassPageShell } from "@/components/layout/liquid-glass-page-shell"
 import { LiquidGlassSectionHeader } from "@/components/layout/liquid-glass-section-header"
 import { Button } from "@/components/ui/button"
 import { parseFacilityPointCloudNpy } from "@/lib/facility-point-cloud/load-npy"
+import { buildGlassStructureMeshes } from "@/lib/facility-mesh/build-glass-structure"
+import type { GlassMeshDocument } from "@/lib/facility-mesh/types"
+import type { FacilitySceneGraphDocument, FacilitySceneNode } from "@/lib/facility-scene-graph/types"
 import type { FacilityDataId } from "@/lib/facility-list-types"
 import type { FacilityPointCloud } from "@/lib/facility-point-cloud/types"
 
@@ -22,12 +26,25 @@ function pointcloudUrl(dataId: FacilityDataId) {
   return `/api/pointcloud/${dataId}`
 }
 
+function glassMeshUrl(dataId: FacilityDataId) {
+  return `/api/glass-mesh/${dataId}`
+}
+
+function sceneGraphUrl(dataId: FacilityDataId) {
+  return `/api/scene-graph/${dataId}`
+}
+
 export type FacilityPointCloudViewerShellProps = {
   dataId: FacilityDataId | null
 }
 
 export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudViewerShellProps) {
   const [cloud, setCloud] = useState<FacilityPointCloud | null>(null)
+  const [glassMesh, setGlassMesh] = useState<GlassMeshDocument | null>(null)
+  const [sceneGraph, setSceneGraph] = useState<FacilitySceneGraphDocument | null>(null)
+  const [sceneGraphLoading, setSceneGraphLoading] = useState(false)
+  const [sceneGraphError, setSceneGraphError] = useState<string | null>(null)
+  const [selectedSceneNode, setSelectedSceneNode] = useState<FacilitySceneNode | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadFromApi = useCallback(async (id: FacilityDataId, signal?: AbortSignal) => {
@@ -45,15 +62,35 @@ export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudView
   useEffect(() => {
     if (!dataId) {
       setCloud(null)
+      setGlassMesh(null)
+      setSceneGraph(null)
+      setSelectedSceneNode(null)
       setError("잘못된 경로입니다. dataId는 1, 2, 3 중 하나여야 합니다.")
       return
     }
     const ac = new AbortController()
     setError(null)
+    setGlassMesh(null)
+    setSceneGraph(null)
+    setSelectedSceneNode(null)
+    setSceneGraphLoading(true)
+    setSceneGraphError(null)
+
     loadFromApi(dataId, ac.signal)
-      .then((c) => {
-        if (!ac.signal.aborted) {
-          setCloud(c)
+      .then(async (c) => {
+        if (ac.signal.aborted) return
+        setCloud(c)
+        try {
+          const res = await fetch(glassMeshUrl(dataId), { cache: "no-store", signal: ac.signal })
+          if (res.ok) {
+            setGlassMesh((await res.json()) as GlassMeshDocument)
+          } else if (!ac.signal.aborted) {
+            setGlassMesh(buildGlassStructureMeshes(c, dataId))
+          }
+        } catch {
+          if (!ac.signal.aborted) {
+            setGlassMesh(buildGlassStructureMeshes(c, dataId))
+          }
         }
       })
       .catch((e) => {
@@ -61,8 +98,32 @@ export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudView
           return
         }
         setCloud(null)
+        setGlassMesh(null)
         setError(e instanceof Error ? e.message : String(e))
       })
+
+    fetch(sceneGraphUrl(dataId), { cache: "no-store", signal: ac.signal })
+      .then(async (res) => {
+        if (ac.signal.aborted) return
+        if (!res.ok) {
+          const text = await res.text()
+          throw new Error(text || `${res.status}`)
+        }
+        setSceneGraph((await res.json()) as FacilitySceneGraphDocument)
+      })
+      .catch((e) => {
+        if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+          return
+        }
+        setSceneGraph(null)
+        setSceneGraphError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) {
+          setSceneGraphLoading(false)
+        }
+      })
+
     return () => ac.abort()
   }, [dataId, loadFromApi])
 
@@ -79,7 +140,7 @@ export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudView
 
   return (
     <LiquidGlassPageShell maxWidth="full" glass={false} className="pb-8">
-      <div className="mx-auto w-full max-w-[1400px] px-2 md:px-4">
+      <div className="mx-auto w-full max-w-[1600px] px-2 md:px-4">
         <Button
           asChild
           variant="ghost"
@@ -101,8 +162,8 @@ export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudView
           }
           description={
             <>
-              소스 <code className="font-mono text-xs text-red-900/80">{pointcloudUrl(dataId)}</code> · 행{" "}
-              <code className="font-mono text-xs">[x, y, z, r, g, b, semantic_id]</code>
+              포인트 <code className="font-mono text-xs text-red-900/80">{pointcloudUrl(dataId)}</code> · 씬 그래프{" "}
+              <code className="font-mono text-xs text-red-900/80">{sceneGraphUrl(dataId)}</code>
             </>
           }
           className="mb-6"
@@ -114,8 +175,25 @@ export function FacilityPointCloudViewerShell({ dataId }: FacilityPointCloudView
           </p>
         ) : null}
 
-        <div className="overflow-hidden rounded-[2rem] border border-red-900/10 bg-white/40 shadow-[0_20px_40px_rgba(153,27,27,0.08)] backdrop-blur-sm">
-          <FacilityPointCloudDeck cloud={cloud} pointSize={2} className="min-h-[65vh] border-0 shadow-none" />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-hidden rounded-[2rem] border border-red-900/10 bg-white/40 shadow-[0_20px_40px_rgba(153,27,27,0.08)] backdrop-blur-sm">
+            <FacilityPointCloudDeck
+              cloud={cloud}
+              glassMesh={glassMesh}
+              selectedSceneNode={selectedSceneNode}
+              onClearSceneSelection={() => setSelectedSceneNode(null)}
+              pointSize={2}
+              className="min-h-[65vh] border-0 bg-gradient-to-b from-slate-100/80 to-slate-200/40 shadow-none"
+            />
+          </div>
+
+          <FacilitySceneGraphPanel
+            sceneGraph={sceneGraph}
+            loading={sceneGraphLoading}
+            error={sceneGraphError}
+            selectedNodeId={selectedSceneNode?.id ?? null}
+            onSelectNode={setSelectedSceneNode}
+          />
         </div>
       </div>
     </LiquidGlassPageShell>
