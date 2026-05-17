@@ -1,60 +1,159 @@
-// api/auth.ts
-import axios from "axios";
+import axios from "axios"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL
 
-export const signin = async (email, password) => {
-  // 개발 환경에서 API 우회 (모의 데이터 반환)
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_MOCK_API === "true"
-  ) {
-    console.log("개발 모드: API 우회, 모의 로그인 데이터 반환");
-    // 모의 응답 데이터
+const useMockApi =
+  process.env.NEXT_PUBLIC_MOCK_API === "true" &&
+  (!API_URL || process.env.NODE_ENV === "development")
+
+const apiUrl = (path: string) => {
+  if (!API_URL) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured.")
+  }
+  return `${API_URL}${path}`
+}
+
+export type UserJob = "FACILITY_MANAGER" | "FIREFIGHTER"
+
+export type Building = {
+  id: string
+  name: string
+  address: string
+  latitude: number
+  longitude: number
+  district_code: string
+  district_name: string
+  region_1depth_name?: string | null
+  region_2depth_name?: string | null
+  region_3depth_name?: string | null
+}
+
+export type Jurisdiction = {
+  code?: string
+  name?: string
+  address?: string
+  latitude?: number
+  longitude?: number
+  provider?: string
+  provider_place_id?: string
+  region_1depth_name?: string
+  region_2depth_name?: string
+  region_3depth_name?: string
+}
+
+export type AuthUser = {
+  id: string
+  email: string
+  name: string
+  job: UserJob
+  jurisdiction: Jurisdiction | null
+  created_at: string
+  building: Building | null
+}
+
+export type LoginResponse = {
+  message: string
+  access_token: string
+  token_type: string
+  user: AuthUser
+}
+
+export type SignupResponse = {
+  message: string
+  user: AuthUser
+}
+
+export type SignupPayload = {
+  name: string
+  job: UserJob
+  email: string
+  password: string
+  building_location?: {
+    latitude: number
+    longitude: number
+    place_name?: string
+    address?: string
+    provider?: string
+    provider_place_id?: string
+    district_code?: string
+    district_name?: string
+    region_1depth_name?: string
+    region_2depth_name?: string
+    region_3depth_name?: string
+  }
+  jurisdiction?: {
+    code?: string
+    name?: string
+    address?: string
+    latitude?: number
+    longitude?: number
+    provider?: string
+    provider_place_id?: string
+    region_1depth_name?: string
+    region_2depth_name?: string
+    region_3depth_name?: string
+  }
+}
+
+export const signin = async (email: string, password: string): Promise<LoginResponse> => {
+  if (useMockApi) {
     return {
+      message: "mock login",
       access_token: "mock_access_token_12345",
+      token_type: "bearer",
       user: {
-        id: 1,
-        email: email,
+        id: "mock-user-1",
+        email,
         name: "Mock User",
+        job: "FACILITY_MANAGER",
+        jurisdiction: null,
+        created_at: new Date().toISOString(),
+        building: null,
       },
-    };
+    }
   }
 
-  // 1. POST 메서드 사용
-  // 2. 주소는 /auth/login
-  // 3. 데이터는 { email, password } 형태로 전송 (Axios가 자동으로 JSON 변환)
-  console.log("전송 시작 주소:", `${API_URL}/auth/login`);
-  const response = await axios.post(`${API_URL}/auth/login`, {
-    email: email, // 이미지의 'email' 필드명과 일치해야 함
-    password: password, // 이미지의 'password' 필드명과 일치해야 함
-  });
+  const response = await axios.post(apiUrl("/auth/login"), { email, password })
+  return response.data
+}
 
-  return response.data; // 성공 시 반환되는 '사용자 정보'
-};
-export const signup = async (email, password, name) => {
-  // 개발 환경에서 API 우회 (모의 데이터 반환)
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_MOCK_API === "true"
-  ) {
-    console.log("개발 모드: API 우회, 모의 회원가입 데이터 반환");
-    // 모의 응답 데이터
+export const signup = async (payload: SignupPayload): Promise<SignupResponse> => {
+  if (useMockApi) {
     return {
-      access_token: "mock_access_token_signup_12345",
+      message: "mock signup",
       user: {
-        id: 2,
-        email: email,
-        name: name,
+        id: "mock-user-2",
+        email: payload.email,
+        name: payload.name,
+        job: payload.job,
+        jurisdiction: payload.jurisdiction ?? null,
+        created_at: new Date().toISOString(),
+        building: null,
       },
-    };
+    }
   }
 
-  const response = await axios.post(`${API_URL}/auth/signup`, {
-    email: email, // 이미지의 'email' 필드명과 일치해야 함
-    password: password,
-    name: name, // 이미지의 'password' 필드명과 일치해야 함
-  });
+  const response = await axios.post(apiUrl("/auth/signup"), payload)
+  return response.data
+}
 
-  return response.data; // 성공 시 반환되는 '사용자 정보'
-};
+export const getMe = async (accessToken: string): Promise<AuthUser> => {
+  if (useMockApi) {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null
+    if (stored) return JSON.parse(stored) as AuthUser
+    return {
+      id: "mock-user-1",
+      email: "mock@example.com",
+      name: "Mock User",
+      job: "FACILITY_MANAGER",
+      jurisdiction: null,
+      created_at: new Date().toISOString(),
+      building: null,
+    }
+  }
+
+  const response = await axios.get(apiUrl("/auth/me"), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return response.data
+}

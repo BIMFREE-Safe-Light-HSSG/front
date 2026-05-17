@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 const fieldClass =
-  "border-red-900/15 bg-white/50 shadow-none focus-visible:border-red-900/30 focus-visible:ring-red-900/20"
+  "border-red-900/15 bg-white/50 text-zinc-900 placeholder:text-zinc-500 shadow-none focus-visible:border-red-900/30 focus-visible:ring-red-900/20 dark:text-zinc-900 dark:placeholder:text-zinc-500"
 
 export default function SignInPage() {
   const [email, setEmail] = useState("")
@@ -28,11 +28,15 @@ export default function SignInPage() {
     try {
       const result = await signin(email, password)
 
-      if (result && result.access_token) {
+      if (result?.access_token) {
         localStorage.setItem("accessToken", result.access_token)
       }
+      if (result?.user) {
+        localStorage.setItem("currentUser", JSON.stringify(result.user))
+      }
+      window.dispatchEvent(new Event("auth-state-changed"))
 
-      router.push("/")
+      router.push("/viewer")
     } catch (error) {
       console.error("로그인 에러:", error)
       alert("로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.")
