@@ -1,8 +1,10 @@
 "use client";
 
-import { upload } from "@/app/api/upload";
+import { completeUpload, requestUploadUrl, uploadFileToPresignedUrl } from "@/app/api/upload";
+import type { AuthUser } from "@/app/api/auth";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Compass, ShieldAlert, Gem, UploadCloud, FileText } from "lucide-react";
 
@@ -11,8 +13,11 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
+  const [uploadStatus, setUploadStatus] = useState<
+    "idle" | "requestingUploadUrl" | "uploadingFile" | "completingUpload" | "success" | "error"
+  >("idle");
   const [progress, setProgress] = useState(0);
   const [isEmergency, setIsEmergency] = useState(false); // 배경 테마 연동을 위한 상태
 
@@ -22,6 +27,20 @@ export default function UploadPage() {
       alert("로그인이 필요합니다.");
       router.push("/sign-in");
     } else {
+      const storedUser = localStorage.getItem("currentUser");
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser) as AuthUser;
+          if (parsedUser.job !== "FACILITY_MANAGER") {
+            alert("스캔 업로드는 시설관리자만 사용할 수 있습니다.");
+            router.replace("/");
+            return;
+          }
+          setCurrentUser(parsedUser);
+        } catch {
+          setCurrentUser(null);
+        }
+      }
       setLoading(false);
     }
   }, [router]);
@@ -52,21 +71,49 @@ export default function UploadPage() {
     e.preventDefault();
     if (!selectedFile) return;
 
-    setUploadStatus("uploading");
+    const token = localStorage.getItem("accessToken");
+    const buildingId = currentUser?.building?.id;
+
+    if (!token) {
+      alert("로그인이 필요합니다.");
+      router.push("/sign-in");
+      return;
+    }
+
+    if (currentUser?.job !== "FACILITY_MANAGER") {
+      alert("스캔 업로드는 시설관리자만 사용할 수 있습니다.");
+      return;
+    }
+
+    if (!buildingId) {
+      alert("업로드할 관리 건물이 없습니다.");
+      return;
+    }
+
+    setUploadStatus("requestingUploadUrl");
     setProgress(15);
 
     try {
-      const uploadConfig = await upload(selectedFile);
+      const uploadConfig = await requestUploadUrl({
+        accessToken: token,
+        file: selectedFile,
+        buildingId,
+      });
       setProgress(40);
 
-      const uploadResponse = await fetch(uploadConfig.upload_url, {
-        method: uploadConfig.method || "PUT",
-        headers: { ...uploadConfig.headers },
-        body: selectedFile,
+      setUploadStatus("uploadingFile");
+      await uploadFileToPresignedUrl({
+        uploadUrl: uploadConfig.upload_url,
+        file: selectedFile,
+        headers: uploadConfig.headers,
       });
+      setProgress(75);
 
-      if (!uploadResponse.ok) throw new Error("Minio 전송 실패");
-
+      setUploadStatus("completingUpload");
+      await completeUpload({
+        accessToken: token,
+        taskId: uploadConfig.task_id,
+      });
       setProgress(100);
       setUploadStatus("success");
     } catch (error) {
@@ -120,6 +167,17 @@ export default function UploadPage() {
         <div className="absolute inset-0 rounded-[3rem] border border-white/60 pointer-events-none shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)]" />
 
         <div className="relative z-20">
+          <Link href="/" className="mb-8 inline-flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-950 text-white shadow-lg">
+              <UploadCloud className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
+                BIMFree
+              </p>
+              <p className="text-xs text-zinc-500">Home</p>
+            </div>
+          </Link>
           <header className={`border-l-4 transition-colors duration-700 pl-6 mb-10 ${
             isEmergency ? "border-red-600" : "border-red-900"
           }`}>
@@ -136,7 +194,7 @@ export default function UploadPage() {
           <div
             className={`relative group border-2 border-dashed rounded-3xl p-12 transition-all duration-500 flex flex-col items-center justify-center overflow-hidden
               ${selectedFile ? 'border-red-500 bg-red-50/50' : 'border-red-900/20 hover:border-red-500 bg-white/5 cursor-pointer'}`}
-            onClick={() => uploadStatus !== "uploading" && fileInputRef.current?.click()}
+            onClick={() => !["requestingUploadUrl", "uploadingFile", "completingUpload"].includes(uploadStatus) && fileInputRef.current?.click()}
             onDragOver={preventDefault}
             onDragEnter={preventDefault}
             onDrop={handleDrop}
@@ -173,10 +231,14 @@ export default function UploadPage() {
               </button>
             )}
 
-            {uploadStatus === "uploading" && (
+            {["requestingUploadUrl", "uploadingFile", "completingUpload"].includes(uploadStatus) && (
               <div className="w-full space-y-4">
                 <div className="flex justify-between items-end">
-                  <span className="font-mono text-[10px] text-red-600 animate-pulse tracking-widest uppercase">Crystallizing...</span>
+                  <span className="font-mono text-[10px] text-red-600 animate-pulse tracking-widest uppercase">
+                    {uploadStatus === "requestingUploadUrl" && "Requesting upload URL..."}
+                    {uploadStatus === "uploadingFile" && "Uploading scan file..."}
+                    {uploadStatus === "completingUpload" && "Transforming scene graph..."}
+                  </span>
                   <span className="font-mono text-xs text-red-900 font-bold">{progress}%</span>
                 </div>
                 <div className="w-full h-1.5 bg-red-900/10 rounded-full overflow-hidden">

@@ -1,36 +1,109 @@
-// api/upload.ts
-import axios from 'axios';
+import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-export const upload = async (file: File) => {
-  // 1. 로컬 스토리지에서 토큰 가져오기
-  const token = localStorage.getItem("accessToken");
+const apiUrl = (path: string) => {
+  if (!API_URL) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured.");
+  }
 
-  // 2. 서버에 업로드 승인 요청 (Presigned URL 발급)
+  return `${API_URL}${path}`;
+};
+
+const authHeaders = (accessToken: string) => ({
+  Authorization: `Bearer ${accessToken}`,
+});
+
+export type UploadStatus = "PENDING" | "COMPLETED" | "FAILED" | string;
+
+export type UploadUrlResponse = {
+  task_id: string;
+  status: UploadStatus;
+  bucket_name: string;
+  object_key: string;
+  scan_file_path: string;
+  upload_url: string;
+  method: "PUT";
+  expires_in: number;
+  headers: Record<string, string>;
+};
+
+export type CompleteUploadResponse = {
+  message: string;
+  task_id: string;
+  status: UploadStatus;
+  graph_data_id: string;
+  graph_data: {
+    nodes?: unknown[];
+    edges?: unknown[];
+    [key: string]: unknown;
+  };
+};
+
+export const requestUploadUrl = async ({
+  accessToken,
+  file,
+  buildingId,
+}: {
+  accessToken: string;
+  file: File;
+  buildingId: string;
+}): Promise<UploadUrlResponse> => {
   const response = await axios.post(
-    `${API_URL}/data_transform/upload`,
+    apiUrl("/data_transform/upload"),
     {
       filename: file.name,
       content_type: file.type || "application/octet-stream",
-      building_id: null
+      building_id: buildingId,
     },
     {
       headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      }
+        ...authHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
     }
   );
 
-  const { upload_url } = response.data;
+  return response.data;
+};
 
-
-  await axios.put(upload_url, file, {
+export const uploadFileToPresignedUrl = async ({
+  uploadUrl,
+  file,
+  headers,
+}: {
+  uploadUrl: string;
+  file: File;
+  headers: Record<string, string>;
+}) => {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
     headers: {
-      "Content-Type": file.type || "application/octet-stream"
-    }
+      "Content-Type": file.type || "application/octet-stream",
+      ...headers,
+    },
+    body: file,
   });
 
-  return response.data; // 최종적으로 승인 정보 및 상태 반환
+  if (!response.ok) {
+    throw new Error("MinIO 파일 업로드에 실패했습니다.");
+  }
+};
+
+export const completeUpload = async ({
+  accessToken,
+  taskId,
+}: {
+  accessToken: string;
+  taskId: string;
+}): Promise<CompleteUploadResponse> => {
+  const response = await axios.post(
+    apiUrl(`/data_transform/${taskId}/complete_upload`),
+    null,
+    {
+      headers: authHeaders(accessToken),
+    }
+  );
+
+  return response.data;
 };
