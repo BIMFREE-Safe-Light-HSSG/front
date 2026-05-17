@@ -49,10 +49,10 @@ export function FacilityListPanel() {
         eyebrow="Facility Registry"
         title={
           <>
-            Point <span className="text-red-800/25 [-webkit-text-stroke:1px_#991b1b]">Cloud</span>
+            시설 <span className="text-red-800/25 [-webkit-text-stroke:1px_#991b1b]">Viewer</span>
           </>
         }
-        description="관리 중인 시설을 선택하면 해당 슬롯의 포인트 클라우드를 봅니다. (샘플: /api/pointcloud/1~3)"
+        description="계정에 연결된 시설을 선택하면 3D 외형·구역 대시보드 뷰어로 이동합니다."
       />
 
       {error ? (
@@ -63,9 +63,11 @@ export function FacilityListPanel() {
 
       {loading ? (
         <p className="font-mono text-xs tracking-widest text-zinc-400 uppercase">Loading facilities…</p>
+      ) : (data?.facilities ?? []).length === 0 ? (
+        <p className="text-muted-foreground text-sm">등록된 시설이 없습니다.</p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(data?.facilities ?? []).map((f) => (
+          {data!.facilities.map((f) => (
             <li key={f.id}>
               <Link
                 prefetch={false}

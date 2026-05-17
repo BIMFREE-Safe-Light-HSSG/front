@@ -8,7 +8,6 @@
     "dev": "next dev",
     "dev:webpack": "next dev --webpack",
     "lint": "eslint .",
-    "generate:glass-meshes": "npx tsx scripts/generate-glass-meshes.ts",
     "start": "next start"
   },
   "dependencies": {
