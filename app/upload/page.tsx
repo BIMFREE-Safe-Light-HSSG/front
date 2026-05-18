@@ -30,6 +30,20 @@ const inProgressStatuses: UploadStatus[] = [
   "completingUpload",
 ];
 
+const getUploadErrorMessage = (error: unknown) => {
+  const status = (error as { response?: { status?: number } }).response?.status;
+
+  if (status === 502) {
+    return "파일 업로드는 완료됐지만 서버의 데이터 변환 단계에서 오류가 발생했습니다. 잠시 후 다시 시도하거나 백엔드 complete_upload 로그를 확인해주세요.";
+  }
+
+  if (status) {
+    return `업로드 처리 중 서버 오류가 발생했습니다. 상태 코드: ${status}`;
+  }
+
+  return "업로드 중 오류가 발생했습니다.";
+};
+
 const getRequestedBuildingId = () => {
   if (typeof window === "undefined") return null;
 
@@ -186,7 +200,7 @@ export default function UploadPage() {
       setUploadStatus("error");
       setIsEmergency(true);
       setProgress(0);
-      alert("업로드 중 오류가 발생했습니다.");
+      alert(getUploadErrorMessage(error));
     }
   };
 
@@ -196,23 +210,20 @@ export default function UploadPage() {
 
   return (
     <main
-      className={`relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-4 py-10 transition-colors duration-1000 ${
-        isEmergency ? "bg-[#ffebeb]" : "bg-[#fffafa]"
-      }`}
+      className={`relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-4 py-10 transition-colors duration-1000 ${isEmergency ? "bg-[#ffebeb]" : "bg-[#fffafa]"
+        }`}
       onDragOver={preventDefault}
       onDrop={preventDefault}
     >
       <div className="absolute inset-0 z-0">
         <div
-          className={`absolute left-[10%] top-[10%] h-[500px] w-[500px] rounded-full mix-blend-multiply blur-3xl transition-all duration-1000 animate-blob ${
-            isEmergency ? "bg-red-300/30" : "bg-orange-200/20"
-          }`}
+          className={`absolute left-[10%] top-[10%] h-[500px] w-[500px] rounded-full mix-blend-multiply blur-3xl transition-all duration-1000 animate-blob ${isEmergency ? "bg-red-300/30" : "bg-orange-200/20"
+            }`}
         />
         <div className="absolute right-[5%] top-[40%] h-[600px] w-[600px] rounded-full bg-red-50/40 mix-blend-multiply blur-3xl animate-blob animation-delay-2000" />
         <div
-          className={`absolute bottom-[10%] left-[20%] h-[500px] w-[500px] rounded-full mix-blend-multiply blur-3xl transition-all duration-1000 animate-blob animation-delay-4000 ${
-            isEmergency ? "bg-red-400/20" : "bg-red-100/10"
-          }`}
+          className={`absolute bottom-[10%] left-[20%] h-[500px] w-[500px] rounded-full mix-blend-multiply blur-3xl transition-all duration-1000 animate-blob animation-delay-4000 ${isEmergency ? "bg-red-400/20" : "bg-red-100/10"
+            }`}
         />
       </div>
 
@@ -247,9 +258,8 @@ export default function UploadPage() {
           </Link>
 
           <header
-            className={`mb-8 border-l-4 pl-6 transition-colors duration-700 ${
-              isEmergency ? "border-red-600" : "border-red-900"
-            }`}
+            className={`mb-8 border-l-4 pl-6 transition-colors duration-700 ${isEmergency ? "border-red-600" : "border-red-900"
+              }`}
           >
             <div className="mb-4 flex items-center gap-3">
               <Compass
@@ -261,9 +271,9 @@ export default function UploadPage() {
               </span>
             </div>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-zinc-900">
-              Raw{" "}
+              Data{" "}
               <span className={isEmergency ? "text-red-600" : "text-red-800/20 [-webkit-text-stroke:1px_#991b1b]"}>
-                Extraction
+                Upload
               </span>
             </h1>
           </header>
@@ -307,11 +317,10 @@ export default function UploadPage() {
           </div>
 
           <div
-            className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-12 transition-all duration-500 ${
-              selectedFile
-                ? "border-red-500 bg-red-50/50"
-                : "border-red-900/20 bg-white/5 hover:border-red-500"
-            }`}
+            className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-12 transition-all duration-500 ${selectedFile
+              ? "border-red-500 bg-red-50/50"
+              : "border-red-900/20 bg-white/5 hover:border-red-500"
+              }`}
             onClick={() =>
               !inProgressStatuses.includes(uploadStatus) && fileInputRef.current?.click()
             }
@@ -352,7 +361,7 @@ export default function UploadPage() {
                 disabled={!selectedBuildingId}
                 className="group relative flex items-center gap-4 bg-red-950 px-12 py-5 font-black uppercase tracking-[0.4em] text-white shadow-xl transition-all hover:bg-black active:scale-95 disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
-                <span className="text-[10px]">Initiate Protocol</span>
+                <span className="text-[10px]">Upload</span>
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-2" />
               </button>
             )}
