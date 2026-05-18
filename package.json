@@ -2,6 +2,7 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.1.2",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -56,6 +57,7 @@
     "lucide-react": "^0.454.0",
     "next": "16.0.10",
     "next-themes": "^0.4.6",
+    "pnpm": "^11.1.2",
     "react": "^19.2.5",
     "react-day-picker": "9.8.0",
     "react-dom": "^19.2.5",
@@ -80,5 +82,6 @@
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
     "typescript": "^5"
-  }
+  },
+  "packageManager": "pnpm@8"
 }
