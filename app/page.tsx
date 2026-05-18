@@ -117,7 +117,7 @@ export default function Home() {
             <p className="mt-8 max-w-2xl text-lg leading-8 text-zinc-600">
               {user
                 ? `${user.name ?? user.email}님, ${isFacilityManager ? "시설관리 업무를 시작하세요." : "관할 지구 건물 정보를 확인하세요."}`
-                : "시설관리자는 스캔 데이터를 업로드해 scene graph를 생성하고, 소방대원은 관할 지구의 건물 정보를 조회합니다."}
+                : "다중이용시설과 대형 건축물의 안전 정보를 디지털 트윈으로 시각화해, 시설 관리자가 점검 이력과 위험 요소를 한곳에서 관리할 수 있게 합니다. 화재 시에는 구조대원이 건물 구조와 위험 구역, 대피 가능 동선을 빠르게 파악해 구조 경로를 판단하도록 돕습니다."}
             </p>
 
             {!user && (
