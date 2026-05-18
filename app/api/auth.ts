@@ -16,11 +16,11 @@ export type UserJob = "FACILITY_MANAGER" | "FIREFIGHTER";
 export type Building = {
   id: string;
   name: string;
-  address: string;
+  address: string | null;
   latitude: number;
   longitude: number;
-  district_code: string;
-  district_name: string;
+  district_code: string | null;
+  district_name: string | null;
   region_1depth_name?: string | null;
   region_2depth_name?: string | null;
   region_3depth_name?: string | null;
@@ -61,24 +61,26 @@ export type SignupResponse = {
   user: AuthUser;
 };
 
+export type BuildingLocationPayload = {
+  latitude: number;
+  longitude: number;
+  place_name?: string;
+  address?: string;
+  provider?: string;
+  provider_place_id?: string;
+  district_code?: string;
+  district_name?: string;
+  region_1depth_name?: string;
+  region_2depth_name?: string;
+  region_3depth_name?: string;
+};
+
 export type SignupPayload = {
   name: string;
   job: UserJob;
   email: string;
   password: string;
-  building_location?: {
-    latitude: number;
-    longitude: number;
-    place_name?: string;
-    address?: string;
-    provider?: string;
-    provider_place_id?: string;
-    district_code?: string;
-    district_name?: string;
-    region_1depth_name?: string;
-    region_2depth_name?: string;
-    region_3depth_name?: string;
-  };
+  building_location?: BuildingLocationPayload;
   jurisdiction?: {
     code?: string;
     name?: string;

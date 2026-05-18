@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { UserJob } from "@/app/api/auth";
+import type { BuildingLocationPayload, UserJob } from "@/app/api/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -44,6 +44,21 @@ export type ViewerBootstrap = {
   default_scene_graph: SceneGraph | null;
 };
 
+export type CreatedBuilding = {
+  id: string;
+  name: string;
+  address: string | null;
+  provider?: string | null;
+  provider_place_id?: string | null;
+  latitude: number;
+  longitude: number;
+  district_code: string | null;
+  district_name: string | null;
+  region_1depth_name?: string | null;
+  region_2depth_name?: string | null;
+  region_3depth_name?: string | null;
+};
+
 const authHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,
 });
@@ -81,6 +96,23 @@ export const getBuildings = async (
 ): Promise<ViewerBuilding[]> => {
   const response = await axios.get(apiUrl(`${workspacePrefix(job)}/buildings`), {
     headers: authHeaders(accessToken),
+  });
+
+  return response.data;
+};
+
+export const createBuilding = async ({
+  accessToken,
+  payload,
+}: {
+  accessToken: string;
+  payload: BuildingLocationPayload;
+}): Promise<CreatedBuilding> => {
+  const response = await axios.post(apiUrl("/facility/buildings"), payload, {
+    headers: {
+      ...authHeaders(accessToken),
+      "Content-Type": "application/json",
+    },
   });
 
   return response.data;

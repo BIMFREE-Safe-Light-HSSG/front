@@ -14,18 +14,81 @@ import {
   Gem,
   Loader2,
   Maximize2,
+  MapPin,
+  Plus,
   Thermometer,
   Users,
 } from "lucide-react";
 import {
+  createBuilding,
   getBuildingSceneGraph,
   getWorkspace,
+  type CreatedBuilding,
   type SceneGraph,
   type ViewerBuilding,
 } from "@/app/api/viewer";
+import {
+  KakaoLocationPicker,
+  type SelectedKakaoLocation,
+} from "@/components/kakao-location-picker";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import type { AuthUser, UserJob } from "@/app/api/auth";
 
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
+
+const DEFAULT_BUILDING_LOCATION: SelectedKakaoLocation = {
+  latitude: 37.5665,
+  longitude: 126.978,
+};
+
+const toBuildingPayload = (location: SelectedKakaoLocation) => ({
+  latitude: location.latitude,
+  longitude: location.longitude,
+  place_name: location.placeName,
+  address: location.address,
+  provider: location.provider ?? "KAKAO",
+  provider_place_id: location.providerPlaceId,
+  district_code: location.districtCode,
+  district_name: location.districtName,
+  region_1depth_name: location.region1DepthName,
+  region_2depth_name: location.region2DepthName,
+  region_3depth_name: location.region3DepthName,
+});
+
+const toViewerBuilding = (building: CreatedBuilding): ViewerBuilding => ({
+  ...building,
+  has_scene_graph: false,
+  latest_graph_created_at: null,
+});
+
+const getLocationTitle = (location: SelectedKakaoLocation) => {
+  const region = [location.region1DepthName, location.region2DepthName, location.region3DepthName]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    location.placeName ||
+    location.address ||
+    region ||
+    `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`
+  );
+};
+
+const getLocationDetail = (location: SelectedKakaoLocation) => {
+  const region = [location.region1DepthName, location.region2DepthName, location.region3DepthName]
+    .filter(Boolean)
+    .join(" ");
+
+  return [location.address, region, location.districtName].filter(Boolean).join(" · ");
+};
 
 const getErrorStatus = (error: unknown) => {
   if (axios.isAxiosError(error)) {
@@ -72,6 +135,12 @@ export default function ViewerPage() {
   const [sceneGraphStatus, setSceneGraphStatus] = useState<SceneGraphStatus>("idle");
   const [userJob, setUserJob] = useState<UserJob | null>(null);
   const [isEmergency, setIsEmergency] = useState(false);
+  const [isCreateBuildingOpen, setIsCreateBuildingOpen] = useState(false);
+  const [newBuildingLocation, setNewBuildingLocation] =
+    useState<SelectedKakaoLocation>(DEFAULT_BUILDING_LOCATION);
+  const [confirmedNewBuildingLocation, setConfirmedNewBuildingLocation] =
+    useState<SelectedKakaoLocation | null>(null);
+  const [isCreatingBuilding, setIsCreatingBuilding] = useState(false);
 
   const selectedBuilding = useMemo(
     () => buildings.find((building) => building.id === selectedBuildingId) ?? null,
@@ -182,6 +251,95 @@ export default function ViewerPage() {
 
       setSceneGraphStatus("error");
     }
+  };
+
+  const resetCreateBuildingForm = () => {
+    setNewBuildingLocation(DEFAULT_BUILDING_LOCATION);
+    setConfirmedNewBuildingLocation(null);
+  };
+
+  const handleCreateBuildingOpenChange = (open: boolean) => {
+    setIsCreateBuildingOpen(open);
+
+    if (!open && !isCreatingBuilding) {
+      resetCreateBuildingForm();
+    }
+  };
+
+  const handleConfirmNewBuildingLocation = () => {
+    if (
+      !Number.isFinite(newBuildingLocation.latitude) ||
+      !Number.isFinite(newBuildingLocation.longitude)
+    ) {
+      alert("지도에서 건물 위치를 선택해주세요.");
+      return;
+    }
+
+    if (!newBuildingLocation.address && !newBuildingLocation.placeName) {
+      alert("건물 위치를 검색하거나 지도에서 선택해주세요.");
+      return;
+    }
+
+    setConfirmedNewBuildingLocation(newBuildingLocation);
+  };
+
+  const handleCreateBuilding = async () => {
+    const token = localStorage.getItem("accessToken");
+
+    if (!token) {
+      alert("로그인이 필요합니다.");
+      router.push("/sign-in");
+      return;
+    }
+
+    if (!confirmedNewBuildingLocation) {
+      alert("건물 위치 확인을 먼저 완료해주세요.");
+      return;
+    }
+
+    setIsCreatingBuilding(true);
+
+    try {
+      const createdBuilding = await createBuilding({
+        accessToken: token,
+        payload: toBuildingPayload(confirmedNewBuildingLocation),
+      });
+      const viewerBuilding = toViewerBuilding(createdBuilding);
+
+      setBuildings((current) => [
+        viewerBuilding,
+        ...current.filter((building) => building.id !== viewerBuilding.id),
+      ]);
+      setSelectedBuildingId(viewerBuilding.id);
+      setSceneGraph(null);
+      setSceneGraphStatus("empty");
+      setIsCreateBuildingOpen(false);
+      resetCreateBuildingForm();
+      alert("건물이 추가되었습니다.");
+    } catch (error) {
+      if (getErrorStatus(error) === 401) {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("currentUser");
+        window.dispatchEvent(new Event("auth-state-changed"));
+        alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
+        router.push("/sign-in");
+        return;
+      }
+
+      console.error("Create building error:", error);
+      alert("건물 추가에 실패했습니다. 위치 정보를 확인한 뒤 다시 시도해주세요.");
+    } finally {
+      setIsCreatingBuilding(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    if (!selectedBuildingId) {
+      alert("업로드할 건물을 먼저 선택해주세요.");
+      return;
+    }
+
+    router.push(`/upload?buildingId=${encodeURIComponent(selectedBuildingId)}`);
   };
 
   if (loading) {
@@ -308,9 +466,22 @@ export default function ViewerPage() {
               className="flex-1 rounded-[2rem] border border-white/60 bg-white/20 p-8 flex flex-col"
               style={{ backdropFilter: "blur(20px)" }}
             >
-              <h3 className="font-black text-xs tracking-[0.3em] uppercase text-zinc-400 mb-6 italic">
-                Building Access
-              </h3>
+              <div className="mb-6 flex items-center justify-between gap-3">
+                <h3 className="font-black text-xs tracking-[0.3em] uppercase text-zinc-400 italic">
+                  Building Access
+                </h3>
+                {userJob === "FACILITY_MANAGER" && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateBuildingOpen(true)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-900/15 bg-white/40 text-red-950 transition-colors hover:bg-red-950 hover:text-white"
+                    aria-label="건물 추가"
+                    title="건물 추가"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-3 overflow-y-auto pr-1">
                 {buildings.length === 0 ? (
@@ -387,8 +558,9 @@ export default function ViewerPage() {
             {userJob === "FACILITY_MANAGER" && (
               <button
                 type="button"
-                onClick={() => router.push("/upload")}
-                className="h-20 bg-red-950 text-white flex items-center justify-between px-8 rounded-[1.5rem] hover:bg-black transition-all group"
+                onClick={handleUploadClick}
+                disabled={!selectedBuildingId}
+                className="h-20 bg-red-950 text-white flex items-center justify-between px-8 rounded-[1.5rem] hover:bg-black transition-all group disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
                 <span className="font-mono text-[10px] tracking-[0.5em] uppercase font-bold">Upload Scan</span>
                 <ArrowRight size={18} className="group-hover:translate-x-2 transition-transform" />
@@ -397,6 +569,70 @@ export default function ViewerPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isCreateBuildingOpen} onOpenChange={handleCreateBuildingOpenChange}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>건물 추가</DialogTitle>
+            <DialogDescription>
+              건물명 또는 주소를 검색하거나 지도에서 위치를 선택한 뒤 등록합니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <KakaoLocationPicker
+              label="건물 위치"
+              latitude={newBuildingLocation.latitude}
+              longitude={newBuildingLocation.longitude}
+              onChange={(location) => {
+                setNewBuildingLocation(location);
+                setConfirmedNewBuildingLocation(null);
+              }}
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleConfirmNewBuildingLocation}
+              className="w-full"
+            >
+              위치 확인
+            </Button>
+
+            {confirmedNewBuildingLocation && (
+              <div className="rounded-md bg-muted p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-red-900" />
+                  <div className="min-w-0">
+                    <p className="font-medium">{getLocationTitle(confirmedNewBuildingLocation)}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {getLocationDetail(confirmedNewBuildingLocation) || "주소 정보 없음"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCreateBuildingOpenChange(false)}
+              disabled={isCreatingBuilding}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateBuilding}
+              disabled={!confirmedNewBuildingLocation || isCreatingBuilding}
+            >
+              {isCreatingBuilding ? "추가 중..." : "건물 추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="absolute left-10 top-1/2 -translate-y-1/2 font-black text-[12rem] text-red-900/[0.02] select-none pointer-events-none rotate-90 uppercase">
         Facet
