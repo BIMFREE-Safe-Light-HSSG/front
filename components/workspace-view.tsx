@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
 import type { AuthUser, UserJob } from "@/app/api/auth";
 
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
@@ -429,36 +430,13 @@ export default function ViewerPage() {
               WebkitBackdropFilter: "blur(30px) url(#liquid-refraction-viewer)",
             }}
           >
-            <div className="absolute inset-0 p-8 flex flex-col justify-between">
-              <div className="flex justify-between items-start gap-4">
-                <div className="p-4 border border-red-900/10 bg-white/20 backdrop-blur-md max-w-md">
-                  <span className="block font-mono text-[8px] text-zinc-400 mb-1">SELECTED BUILDING</span>
-                  <span className="block font-mono text-xs text-red-900 font-bold tracking-widest truncate">
-                    {selectedBuilding?.name ?? "NO BUILDING"}
-                  </span>
-                  <span className="mt-2 block font-mono text-[10px] text-red-900/60">
-                    {formatCoordinate(selectedBuilding?.latitude, "N")},{" "}
-                    {formatCoordinate(selectedBuilding?.longitude, "E")}
-                  </span>
-                </div>
-                <Maximize2 size={20} className="text-zinc-300 hover:text-red-600 cursor-pointer transition-colors" />
-              </div>
-
-              <SceneGraphState status={sceneGraphStatus} nodeCount={nodeCount} edgeCount={edgeCount} />
-
-              <div className="flex justify-between items-end">
-                <div className="space-y-2">
-                  <div className={`h-1 w-32 ${isEmergency ? "bg-red-600" : "bg-red-900/20"}`} />
-                  <p className="font-mono text-[10px] text-red-900/60 uppercase tracking-widest">
-                    {selectedBuilding?.district_name ?? "No district"} /{" "}
-                    {sceneGraph ? `Graph ${sceneGraph.graph_data_id.slice(0, 8)}` : "Graph pending"}
-                  </p>
-                </div>
-                <Gem size={48} strokeWidth={0.5} className={isEmergency ? "text-red-600 animate-pulse" : "text-red-900/10"} />
-              </div>
-            </div>
-
-            <div className={`w-full h-full ${isEmergency ? "bg-red-950/10" : "bg-zinc-100/20"}`} />
+            <EmbeddedBuildingSceneViewer
+              sceneGraph={sceneGraph}
+              status={sceneGraphStatus}
+              buildingName={selectedBuilding?.name}
+              districtName={selectedBuilding?.district_name}
+              isEmergency={isEmergency}
+            />
           </div>
 
           <div className="lg:col-span-4 flex flex-col gap-6">
