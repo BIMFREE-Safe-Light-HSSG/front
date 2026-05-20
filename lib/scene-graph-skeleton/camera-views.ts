@@ -123,7 +123,7 @@ export function cameraPoseFocusOnZone(zone: ZoneNode, bounds: SceneBounds): Came
   const radius = zonePlanRadius(zone)
   return cameraPoseFocusOnPoint(target, bounds, {
     distanceScale: Math.max(0.55, Math.min(1, radius / maxSceneDim(bounds) + 0.35)),
-    elevationRatio: 0.42,
+    elevationRatio: 0.43,
   })
 }
 
