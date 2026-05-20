@@ -25,11 +25,14 @@ export default function SignInPage() {
 
     if (result && result.access_token) {
       localStorage.setItem("accessToken", result.access_token);
-      console.log("토큰 저장 완료:", result.access_token);
+      if (result.user) {
+        localStorage.setItem("currentUser", JSON.stringify(result.user));
+      }
+      window.dispatchEvent(new Event("auth-state-changed"));
     } else {
       console.warn("로그인은 성공했으나 토큰이 응답에 없습니다.");
     }
-    window.location.href = "/";
+    router.push("/");
 
   } catch (error) {
     console.error("로그인 에러 상세:", error);
@@ -44,8 +47,8 @@ export default function SignInPage() {
       <div className="w-full max-w-sm space-y-8">
         <div className="space-y-2">
           <a href="/" className="inline-flex items-center gap-2 mb-8 group">
-            <span className="font-display text-xl tracking-tight">Demo</span>
-            <span className="text-muted-foreground font-mono text-[10px] mt-0.5">TM</span>
+            <span className="font-display text-xl tracking-tight">BIMFree</span>
+            <span className="text-muted-foreground font-mono text-[10px] mt-0.5">HOME</span>
           </a>
           <h1 className="text-2xl font-display tracking-tight">Welcome back</h1>
           <p className="text-sm text-muted-foreground">Sign in to your account to continue.</p>

@@ -9,9 +9,6 @@ import {
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-// ✅ 1. Navigation 컴포넌트를 불러옵니다. (파일 경로가 다르면 수정하세요)
-import { Navigation } from "@/components/landing/navigation";
-
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-instrument",
@@ -44,7 +41,6 @@ export default function RootLayout({
       <body
         className={`${instrumentSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        <Navigation/>
         <main>
           {children}
         </main>

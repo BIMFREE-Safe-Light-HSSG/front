@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { getMe } from "@/app/api/auth";
 import { Button } from "@/components/ui/button";
 import { Menu, X, User, Gem } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,18 +32,51 @@ export function Navigation() {
   });
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) setIsLoggedIn(true);
+    let isMounted = true;
+    const syncAuthState = () => {
+      const token = localStorage.getItem("accessToken");
+
+      if (!token) {
+        setIsLoggedIn(false);
+        return;
+      }
+
+      setIsLoggedIn(true);
+
+      getMe(token)
+        .then((user) => {
+          if (!isMounted) return;
+          localStorage.setItem("currentUser", JSON.stringify(user));
+          setIsLoggedIn(true);
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          localStorage.removeItem("accessToken");
+          localStorage.removeItem("currentUser");
+          setIsLoggedIn(false);
+        });
+    };
 
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
     };
+
+    syncAuthState();
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    window.addEventListener("auth-state-changed", syncAuthState);
+    window.addEventListener("storage", syncAuthState);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("auth-state-changed", syncAuthState);
+      window.removeEventListener("storage", syncAuthState);
+    };
+  }, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("currentUser");
+    window.dispatchEvent(new Event("auth-state-changed"));
     setIsLoggedIn(false);
     alert("로그아웃 되었습니다.");
     router.push("/");
