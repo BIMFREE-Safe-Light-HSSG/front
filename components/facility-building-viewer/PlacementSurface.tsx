@@ -12,22 +12,25 @@ type PlacementSurfaceProps = {
   bounds: SceneBounds;
   active: boolean;
   onPick: (position: Vec3) => void;
+  /** 화재 지정 모드일 때 바닥 하이라이트 색 */
+  variant?: "default" | "fire";
 };
 
 export function PlacementSurface({
   bounds,
   active,
   onPick,
+  variant = "default",
 }: PlacementSurfaceProps) {
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.08,
-        color: "#38bdf8",
+        opacity: variant === "fire" ? 0.14 : 0.08,
+        color: variant === "fire" ? "#ef4444" : "#38bdf8",
         depthWrite: false,
       }),
-    [],
+    [variant],
   );
 
   if (!active) return null;

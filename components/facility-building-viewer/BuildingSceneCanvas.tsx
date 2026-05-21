@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import { AssetSpot } from "@/components/facility-building-viewer/AssetSpot";
+import { FireIncidentMarker } from "@/components/facility-building-viewer/FireIncidentMarker";
 import { PlacementSurface } from "@/components/facility-building-viewer/PlacementSurface";
 import { SceneCameraController } from "@/components/facility-building-viewer/SceneCameraController";
 import type {
@@ -26,6 +27,7 @@ import {
   zoneMeshTransform,
 } from "@/lib/scene-graph-skeleton/zone-geometry";
 import type { SceneBounds } from "@/lib/scene-graph-skeleton/bounds";
+import type { FireIncident } from "@/lib/fire-incidents/types";
 import type {
   FacilityAssetRef,
   Vec3,
@@ -51,6 +53,10 @@ export type BuildingSceneCanvasProps = {
   searchHighlightActive: boolean;
   highlightZoneIds: ReadonlySet<string>;
   highlightAssetIds: ReadonlySet<string>;
+  fireIncidents?: FireIncident[];
+  selectedFireId?: string | null;
+  onSelectFire?: (id: string) => void;
+  placementVariant?: "default" | "fire";
 };
 
 function disableRaycast(mesh: THREE.Mesh | null) {
@@ -247,16 +253,22 @@ function SceneContent({
   searchHighlightActive,
   highlightZoneIds,
   highlightAssetIds,
+  fireIncidents = [],
+  selectedFireId = null,
+  onSelectFire,
+  placementVariant = "default",
 }: BuildingSceneCanvasProps) {
   const bounds = useMemo(() => boundsFromZones(zones, assets), [zones, assets]);
   const draftAsset = useMemo((): FacilityAssetRef | null => {
     if (!draftPosition) return null;
-    return { id: "__draft__", class: draftClass, position: draftPosition };
-  }, [draftPosition, draftClass]);
+    const draftClassName = placementVariant === "fire" ? "화재" : draftClass;
+    return { id: "__draft__", class: draftClassName, position: draftPosition };
+  }, [draftPosition, draftClass, placementVariant]);
 
   const showZones = layerVisibility.zones || placementMode;
   const showZoneMeshes = layerVisibility.zones;
   const showAssets = layerVisibility.assets;
+  const showFires = layerVisibility.fires ?? true;
 
   if (!bounds) return null;
 
@@ -293,6 +305,7 @@ function SceneContent({
         bounds={bounds}
         active={placementMode}
         onPick={onPlacementPick}
+        variant={placementVariant}
       />
       {showZones ? (
         <group>
@@ -325,6 +338,7 @@ function SceneContent({
               <AssetSpot
                 key={asset.id}
                 asset={asset}
+                zones={zones}
                 selected={selectedAssetId === asset.id}
                 hovered={hoveredAssetId === asset.id}
                 highlighted={aHighlighted}
@@ -336,16 +350,43 @@ function SceneContent({
           })}
         </group>
       ) : null}
-      {draftAsset && (showAssets || placementMode) ? (
+      {draftAsset && placementVariant !== "fire" && (showAssets || placementMode) ? (
         <AssetSpot
           key={draftAsset.id}
           asset={draftAsset}
+          zones={zones}
           selected
           hovered
           interactive={false}
           onSelect={() => {}}
           onHover={() => {}}
         />
+      ) : null}
+      {draftAsset && placementVariant === "fire" && placementMode ? (
+        <FireIncidentMarker
+          incident={{
+            id: "__draft_fire__",
+            position: draftAsset.position,
+            severity: "high",
+            reported_at: new Date().toISOString(),
+          }}
+          selected
+          interactive={false}
+          onSelect={() => {}}
+        />
+      ) : null}
+      {showFires ? (
+        <group>
+          {fireIncidents.map((incident) => (
+            <FireIncidentMarker
+              key={incident.id}
+              incident={incident}
+              selected={selectedFireId === incident.id}
+              interactive={Boolean(onSelectFire)}
+              onSelect={(id) => onSelectFire?.(id)}
+            />
+          ))}
+        </group>
       ) : null}
     </>
   );

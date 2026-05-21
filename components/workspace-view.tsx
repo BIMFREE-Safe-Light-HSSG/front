@@ -2,7 +2,7 @@
 
 import axios from "axios";
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   Loader2,
   Maximize2,
   MapPin,
+  Flame,
   Plus,
   Thermometer,
   Users,
@@ -42,7 +43,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
 import type { AuthUser, UserJob } from "@/app/api/auth";
-
+import { getStoredAuthUser } from "@/lib/auth/storage";
+import {
+  getBuildingActiveFireCount,
+  sortBuildingsByFirePriority,
+} from "@/lib/fire-incidents/building-list";
+import { FIRE_INCIDENTS_CHANGED_EVENT } from "@/lib/fire-incidents/storage";
+import {
+  getDemoSceneGraph,
+  isDemoBuildingId,
+  mergeDemoWorkspace,
+} from "@/lib/facility-demo/seed";
+import { formatViewerDateTime } from "@/lib/format/datetime";
+import { getAxiosErrorStatus, handleUnauthorized } from "@/lib/http/errors";
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
 
 const DEFAULT_BUILDING_LOCATION: SelectedKakaoLocation = {
@@ -91,27 +104,10 @@ const getLocationDetail = (location: SelectedKakaoLocation) => {
   return [location.address, region, location.districtName].filter(Boolean).join(" · ");
 };
 
-const getErrorStatus = (error: unknown) => {
-  if (axios.isAxiosError(error)) {
-    return error.response?.status;
-  }
-
-  return undefined;
-};
-
 const formatCoordinate = (value: number | null | undefined, suffix: "N" | "E") => {
   if (typeof value !== "number") return "N/A";
 
   return `${value.toFixed(4)}° ${suffix}`;
-};
-
-const formatDate = (value: string | null | undefined) => {
-  if (!value) return "N/A";
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 };
 
 const getStoredUserJob = (): UserJob | null => {
@@ -126,8 +122,9 @@ const getStoredUserJob = (): UserJob | null => {
   }
 };
 
-export default function ViewerPage() {
+export default function WorkspaceView() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [buildings, setBuildings] = useState<ViewerBuilding[]>([]);
@@ -142,6 +139,22 @@ export default function ViewerPage() {
   const [confirmedNewBuildingLocation, setConfirmedNewBuildingLocation] =
     useState<SelectedKakaoLocation | null>(null);
   const [isCreatingBuilding, setIsCreatingBuilding] = useState(false);
+  const [fireListRevision, setFireListRevision] = useState(0);
+
+  const bumpFireListRevision = useCallback(() => {
+    setFireListRevision((value) => value + 1);
+  }, []);
+
+  const sortedBuildings = useMemo(
+    () => sortBuildingsByFirePriority(buildings),
+    [buildings, fireListRevision],
+  );
+
+  useEffect(() => {
+    const refreshFireSort = () => setFireListRevision((value) => value + 1);
+    window.addEventListener(FIRE_INCIDENTS_CHANGED_EVENT, refreshFireSort);
+    return () => window.removeEventListener(FIRE_INCIDENTS_CHANGED_EVENT, refreshFireSort);
+  }, []);
 
   const selectedBuilding = useMemo(
     () => buildings.find((building) => building.id === selectedBuildingId) ?? null,
@@ -150,8 +163,8 @@ export default function ViewerPage() {
 
   const nodeCount = sceneGraph?.scene_graph.nodes?.length ?? 0;
   const edgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
-  const workspaceTitle = userJob === "FIREFIGHTER" ? "BUILDING INTELLIGENCE" : "FACILITY MANAGEMENT";
-  const workspaceEyebrow = userJob === "FIREFIGHTER" ? "Emergency Workspace" : "Facility Workspace";
+  const workspaceTitle = "FACILITY MANAGEMENT";
+  const workspaceEyebrow = "Facility Workspace";
 
   useEffect(() => {
     let isMounted = true;
@@ -171,7 +184,10 @@ export default function ViewerPage() {
         setLoading(true);
         setLoadError("");
 
-        const data = await getWorkspace(token, storedJob);
+        const data = mergeDemoWorkspace(
+          await getWorkspace(token, storedJob),
+          getStoredAuthUser(),
+        );
 
         if (!isMounted) return;
 
@@ -189,12 +205,7 @@ export default function ViewerPage() {
       } catch (error) {
         if (!isMounted) return;
 
-        if (getErrorStatus(error) === 401) {
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("currentUser");
-          window.dispatchEvent(new Event("auth-state-changed"));
-          alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
-          router.push("/sign-in");
+        if (handleUnauthorized(error, () => router.push("/sign-in"))) {
           return;
         }
 
@@ -224,21 +235,27 @@ export default function ViewerPage() {
     setSceneGraph(null);
     setSceneGraphStatus("loading");
 
+    if (isDemoBuildingId(buildingId)) {
+      const graph = getDemoSceneGraph(buildingId);
+      if (graph) {
+        setSceneGraph(graph);
+        setSceneGraphStatus("ready");
+      } else {
+        setSceneGraphStatus("empty");
+      }
+      return;
+    }
+
     try {
       const graph = await getBuildingSceneGraph(token, buildingId, userJob);
       setSceneGraph(graph);
       setSceneGraphStatus("ready");
     } catch (error) {
-      const status = getErrorStatus(error);
-
-      if (status === 401) {
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("currentUser");
-        window.dispatchEvent(new Event("auth-state-changed"));
-        alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
-        router.push("/sign-in");
+      if (handleUnauthorized(error, () => router.push("/sign-in"))) {
         return;
       }
+
+      const status = getAxiosErrorStatus(error);
 
       if (status === 403) {
         setSceneGraphStatus("forbidden");
@@ -318,12 +335,7 @@ export default function ViewerPage() {
       resetCreateBuildingForm();
       alert("건물이 추가되었습니다.");
     } catch (error) {
-      if (getErrorStatus(error) === 401) {
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("currentUser");
-        window.dispatchEvent(new Event("auth-state-changed"));
-        alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
-        router.push("/sign-in");
+      if (handleUnauthorized(error, () => router.push("/sign-in"))) {
         return;
       }
 
@@ -411,7 +423,13 @@ export default function ViewerPage() {
           </div>
 
           <button
+            type="button"
             onClick={() => setIsEmergency(!isEmergency)}
+            title={
+              isEmergency
+                ? "비상 대응 종료 — 화재 위치 지정 모드 해제"
+                : "비상 대응 시작 — 3D 뷰어에서 화재 위치 지정"
+            }
             className={`px-8 py-3 font-mono text-[10px] tracking-[0.3em] uppercase transition-all border ${
               isEmergency
                 ? "bg-red-600 text-white border-red-400 shadow-[0_0_20px_#ef4444]"
@@ -433,9 +451,12 @@ export default function ViewerPage() {
             <EmbeddedBuildingSceneViewer
               sceneGraph={sceneGraph}
               status={sceneGraphStatus}
+              buildingId={selectedBuildingId}
               buildingName={selectedBuilding?.name}
               districtName={selectedBuilding?.district_name}
+              enableFacilityTools
               isEmergency={isEmergency}
+              onFireIncidentsChange={bumpFireListRevision}
             />
           </div>
 
@@ -448,17 +469,15 @@ export default function ViewerPage() {
                 <h3 className="font-black text-xs tracking-[0.3em] uppercase text-zinc-400 italic">
                   Building Access
                 </h3>
-                {userJob === "FACILITY_MANAGER" && (
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateBuildingOpen(true)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-900/15 bg-white/40 text-red-950 transition-colors hover:bg-red-950 hover:text-white"
-                    aria-label="건물 추가"
-                    title="건물 추가"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setIsCreateBuildingOpen(true)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-900/15 bg-white/40 text-red-950 transition-colors hover:bg-red-950 hover:text-white"
+                  aria-label="건물 추가"
+                  title="건물 추가"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               </div>
 
               <div className="space-y-3 overflow-y-auto pr-1">
@@ -467,7 +486,9 @@ export default function ViewerPage() {
                     접근 가능한 건물이 없습니다.
                   </div>
                 ) : (
-                  buildings.map((building) => (
+                  sortedBuildings.map((building) => {
+                    const fireCount = getBuildingActiveFireCount(building);
+                    return (
                     <button
                       key={building.id}
                       type="button"
@@ -475,25 +496,36 @@ export default function ViewerPage() {
                       className={`w-full rounded-xl border p-4 text-left transition-all ${
                         selectedBuildingId === building.id
                           ? "border-red-900/40 bg-white/60 shadow-sm"
-                          : "border-red-900/10 bg-white/20 hover:bg-white/40"
+                          : fireCount > 0
+                            ? "border-red-500/35 bg-red-50/40 hover:bg-red-50/60"
+                            : "border-red-900/10 bg-white/20 hover:bg-white/40"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <Building2 className="mt-0.5 h-4 w-4 text-red-900/50" />
-                        <span
-                          className={`rounded-full px-2 py-1 font-mono text-[9px] ${
-                            building.has_scene_graph
-                              ? "bg-red-950 text-white"
-                              : "bg-red-900/10 text-red-900/50"
-                          }`}
-                        >
-                          {building.has_scene_graph ? "GRAPH" : "EMPTY"}
-                        </span>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {fireCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-red-600 px-2 py-1 font-mono text-[9px] font-bold text-white">
+                              <Flame className="h-2.5 w-2.5" />
+                              화재 {fireCount}
+                            </span>
+                          ) : null}
+                          <span
+                            className={`rounded-full px-2 py-1 font-mono text-[9px] ${
+                              building.has_scene_graph
+                                ? "bg-red-950 text-white"
+                                : "bg-red-900/10 text-red-900/50"
+                            }`}
+                          >
+                            {building.has_scene_graph ? "GRAPH" : "EMPTY"}
+                          </span>
+                        </div>
                       </div>
                       <p className="mt-3 text-sm font-bold text-zinc-900">{building.name}</p>
                       <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{building.address ?? "주소 정보 없음"}</p>
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -527,23 +559,21 @@ export default function ViewerPage() {
               <div className={`mt-8 p-4 border-t transition-colors ${isEmergency ? "border-red-500/30" : "border-red-950/10"}`}>
                 <p className="text-[9px] font-mono text-zinc-400 leading-relaxed uppercase">
                   {sceneGraph
-                    ? `LATEST GRAPH: ${formatDate(sceneGraph.created_at)}`
+                    ? `LATEST GRAPH: ${formatViewerDateTime(sceneGraph.created_at)}`
                     : "Select a building with scene graph data to initialize the viewer."}
                 </p>
               </div>
             </div>
 
-            {userJob === "FACILITY_MANAGER" && (
-              <button
-                type="button"
-                onClick={handleUploadClick}
+            <button
+              type="button"
+              onClick={handleUploadClick}
                 disabled={!selectedBuildingId}
                 className="h-20 bg-red-950 text-white flex items-center justify-between px-8 rounded-[1.5rem] hover:bg-black transition-all group disabled:cursor-not-allowed disabled:bg-zinc-300"
               >
                 <span className="font-mono text-[10px] tracking-[0.5em] uppercase font-bold">Upload Scan</span>
                 <ArrowRight size={18} className="group-hover:translate-x-2 transition-transform" />
-              </button>
-            )}
+            </button>
           </div>
         </div>
       </div>
@@ -636,53 +666,6 @@ export default function ViewerPage() {
         .animation-delay-2000 { animation-delay: 2s; }
       `}</style>
     </main>
-  );
-}
-
-function SceneGraphState({
-  status,
-  nodeCount,
-  edgeCount,
-}: {
-  status: SceneGraphStatus;
-  nodeCount: number;
-  edgeCount: number;
-}) {
-  if (status === "loading") {
-    return (
-      <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 font-mono text-xs tracking-[0.3em] text-red-900/50">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        LOADING GRAPH
-      </div>
-    );
-  }
-
-  if (status === "ready") {
-    return (
-      <div className="absolute left-1/2 top-1/2 w-64 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-red-900/10 bg-white/30 p-6 text-center backdrop-blur-md">
-        <Database className="mx-auto mb-4 h-8 w-8 text-red-900/40" />
-        <p className="font-mono text-[10px] tracking-[0.4em] text-red-900/40">SCENE GRAPH</p>
-        <p className="mt-3 text-3xl font-black text-zinc-900">
-          {nodeCount}
-          <span className="text-sm text-zinc-400"> / {edgeCount}</span>
-        </p>
-        <p className="mt-1 font-mono text-[9px] text-zinc-400">NODES / EDGES</p>
-      </div>
-    );
-  }
-
-  const message =
-    status === "forbidden"
-      ? "해당 건물 접근 권한이 없습니다."
-      : status === "error"
-        ? "Scene graph를 불러오지 못했습니다."
-        : "이 건물에는 아직 scene graph가 없습니다.";
-
-  return (
-    <div className="absolute left-1/2 top-1/2 w-72 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-red-900/10 bg-white/30 p-6 text-center backdrop-blur-md">
-      <AlertTriangle className="mx-auto mb-4 h-8 w-8 text-red-900/40" />
-      <p className="text-sm font-bold text-zinc-700">{message}</p>
-    </div>
   );
 }
 

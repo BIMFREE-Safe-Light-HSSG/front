@@ -52,6 +52,8 @@ type ViewerSearchPanelProps = {
   results: ViewerSearchResult[];
   zones: ZoneNode[];
   assetClasses: string[];
+  /** true — 구역 검색만 (소방 뷰어) */
+  zonesOnly?: boolean;
   onClose: () => void;
   onFiltersChange: (filters: ViewerSearchFilters) => void;
   onSelectResult: (result: ViewerSearchResult) => void;
@@ -63,6 +65,7 @@ export function ViewerSearchPanel({
   results,
   zones,
   assetClasses,
+  zonesOnly = false,
   onClose,
   onFiltersChange,
   onSelectResult,
@@ -70,10 +73,14 @@ export function ViewerSearchPanel({
   const active = hasActiveViewerSearch(filters);
 
   const toggleClass = (assetClass: string) => {
-    const set = new Set(filters.assetClasses);
-    if (set.has(assetClass)) set.delete(assetClass);
-    else set.add(assetClass);
-    onFiltersChange({ ...filters, assetClasses: [...set] });
+    const isOnly =
+      filters.assetClasses.length === 1 && filters.assetClasses[0] === assetClass;
+    onFiltersChange({
+      ...filters,
+      assetClasses: isOnly ? [] : [assetClass],
+      entityType:
+        filters.entityType === "zones" ? "assets" : filters.entityType,
+    });
   };
 
   const toggleStatus = (status: AssetStatus) => {
@@ -116,7 +123,7 @@ export function ViewerSearchPanel({
                     검색 및 필터
                   </h2>
                   <p className={cn(viewerType.mono, "text-zinc-500")}>
-                    구역과 시설을 찾습니다.
+                    {zonesOnly ? "구역을 찾습니다." : "구역과 시설을 찾습니다."}
                   </p>
                 </div>
               </div>
@@ -144,30 +151,33 @@ export function ViewerSearchPanel({
                   />
                 </FilterBlock>
 
-                <FilterBlock label="대상">
-                  <Select
-                    value={filters.entityType}
-                    onValueChange={(value) =>
-                      onFiltersChange({
-                        ...filters,
-                        entityType: value as ViewerSearchFilters["entityType"],
-                      })
-                    }
-                  >
-                    <SelectTrigger className={fieldClass}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ENTITY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FilterBlock>
+                {!zonesOnly ? (
+                  <FilterBlock label="대상">
+                    <Select
+                      value={filters.entityType}
+                      onValueChange={(value) =>
+                        onFiltersChange({
+                          ...filters,
+                          entityType: value as ViewerSearchFilters["entityType"],
+                        })
+                      }
+                    >
+                      <SelectTrigger className={fieldClass}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ENTITY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FilterBlock>
+                ) : null}
 
-                {(filters.entityType === "all" ||
+                {(zonesOnly ||
+                  filters.entityType === "all" ||
                   filters.entityType === "assets") && (
                   <FilterBlock label="구역">
                     <Select
@@ -194,8 +204,8 @@ export function ViewerSearchPanel({
                   </FilterBlock>
                 )}
 
-                {(filters.entityType === "all" ||
-                  filters.entityType === "assets") &&
+                {!zonesOnly &&
+                (filters.entityType === "all" || filters.entityType === "assets") &&
                 assetClasses.length > 0 ? (
                   <FilterBlock label="시설 분류">
                     <div className="flex flex-wrap gap-1.5">
@@ -211,8 +221,8 @@ export function ViewerSearchPanel({
                   </FilterBlock>
                 ) : null}
 
-                {filters.entityType === "all" ||
-                filters.entityType === "assets" ? (
+                {!zonesOnly &&
+                (filters.entityType === "all" || filters.entityType === "assets") ? (
                   <FilterBlock label="상태">
                     <div className="flex flex-wrap gap-1.5">
                       {STATUS_OPTIONS.map((status) => (
@@ -261,7 +271,7 @@ export function ViewerSearchPanel({
                         className="w-full rounded-2xl px-3 py-2.5 text-left transition-colors hover:bg-red-950/8 hover:ring-1 hover:ring-red-900/15"
                       >
                         <span className={cn(viewerType.eyebrow, "text-red-800/60")}>
-                          {result.kind === "zone" ? "구역" : "시설"}
+                          {result.kind === "zone" ? "구역" : zonesOnly ? "구역" : "시설"}
                         </span>
                         <p className="text-sm font-semibold text-zinc-900">
                           {result.title}

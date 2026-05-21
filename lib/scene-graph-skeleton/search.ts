@@ -106,6 +106,34 @@ export function runViewerSearch(
   return results
 }
 
+/** 검색 패널 필터에 맞춰 3D 캔버스에 그릴 자산만 남김 */
+export function filterAssetsForViewerDisplay(
+  assets: FacilityAssetRef[],
+  filters: ViewerSearchFilters,
+): FacilityAssetRef[] {
+  if (filters.entityType === "zones") {
+    return []
+  }
+
+  let out = assets
+
+  if (filters.zoneId) {
+    out = out.filter((asset) => asset.zoneId === filters.zoneId)
+  }
+
+  if (filters.assetClasses.length > 0) {
+    out = out.filter((asset) => filters.assetClasses.includes(asset.class))
+  }
+
+  if (filters.assetStatuses.length > 0) {
+    out = out.filter((asset) =>
+      filters.assetStatuses.includes(asset.status ?? "normal"),
+    )
+  }
+
+  return out
+}
+
 export function highlightSetsFromResults(results: ViewerSearchResult[]): {
   zoneIds: Set<string>
   assetIds: Set<string>

@@ -222,13 +222,14 @@ export function ViewerCanvasBadge({
   className,
 }: {
   children: ReactNode;
-  variant?: "default" | "search" | "placement";
+  variant?: "default" | "search" | "placement" | "fire";
   className?: string;
 }) {
   const variants = {
     default: "bg-white/90 text-zinc-800 ring-1 ring-white/80",
     search: "bg-amber-100/95 text-amber-950 ring-1 ring-amber-400/50",
     placement: "bg-sky-100/95 text-sky-950 ring-1 ring-sky-400/50",
+    fire: "bg-red-100/95 text-red-950 ring-1 ring-red-400/50",
   };
   return (
     <motion.span

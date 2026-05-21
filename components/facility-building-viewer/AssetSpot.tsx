@@ -4,9 +4,10 @@ import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import { StructuralAssetMesh, shouldRenderStructuralMesh } from "@/components/facility-building-viewer/StructuralAssetMesh";
 import { assetClassStyle } from "@/lib/scene-graph-skeleton/assets";
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
-import type { AssetStatus, FacilityAssetRef } from "@/lib/scene-graph-skeleton/types";
+import type { AssetStatus, FacilityAssetRef, ZoneNode } from "@/lib/scene-graph-skeleton/types";
 
 const CORE_RADIUS = 0.34;
 const CORE_RADIUS_SELECTED = 0.42;
@@ -19,6 +20,7 @@ const INSPECTION_EMISSIVE = 0xd97706;
 
 export type AssetSpotProps = {
   asset: FacilityAssetRef;
+  zones?: ZoneNode[];
   selected: boolean;
   hovered: boolean;
   highlighted?: boolean;
@@ -36,7 +38,17 @@ function statusPulseKind(
   return null;
 }
 
-export function AssetSpot({
+export function AssetSpot(props: AssetSpotProps) {
+  const { asset, zones = [], ...rest } = props;
+
+  if (shouldRenderStructuralMesh(asset.class)) {
+    return <StructuralAssetMesh asset={asset} zones={zones} {...rest} />;
+  }
+
+  return <FacilityAssetSpot {...props} />;
+}
+
+function FacilityAssetSpot({
   asset,
   selected,
   hovered,

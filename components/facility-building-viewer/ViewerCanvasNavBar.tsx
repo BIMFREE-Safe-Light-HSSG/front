@@ -4,6 +4,7 @@ import {
   Box,
   CircleDot,
   Crosshair,
+  Flame,
   Home,
   Layers,
   MapPin,
@@ -24,6 +25,7 @@ type ViewerCanvasNavBarProps = {
   onFocusSelection: () => void;
   onToggleZones: () => void;
   onToggleAssets: () => void;
+  onToggleFires?: () => void;
 };
 
 function NavBtn({
@@ -94,6 +96,7 @@ export function ViewerCanvasNavBar({
   onFocusSelection,
   onToggleZones,
   onToggleAssets,
+  onToggleFires,
 }: ViewerCanvasNavBarProps) {
   return (
     <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
@@ -137,6 +140,14 @@ export function ViewerCanvasNavBar({
             icon={CircleDot}
             onClick={onToggleAssets}
           />
+          {onToggleFires ? (
+            <LayerToggle
+              active={layerVisibility.fires}
+              label="화재"
+              icon={Flame}
+              onClick={onToggleFires}
+            />
+          ) : null}
         </div>
       </nav>
     </div>

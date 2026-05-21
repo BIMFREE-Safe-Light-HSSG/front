@@ -1,3 +1,4 @@
+import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
 import type { AssetStatus, FacilityAssetRef, SceneGraphSkeleton, SkeletonAsset, ZoneNode } from "./types";
 
 export type AssetClassStyle = {
@@ -45,6 +46,18 @@ export const ASSET_CLASS_STYLES: Record<string, AssetClassStyle> = {
     emissive: "#d97706",
     ringColor: "#fde68a",
   },
+  door: {
+    label: "문",
+    color: "#a8bdd9",
+    emissive: "#5c6b82",
+    ringColor: "#fde68a",
+  },
+  window: {
+    label: "창문",
+    color: "#7dd3fc",
+    emissive: "#0284c7",
+    ringColor: "#bae6fd",
+  },
 };
 
 export const ASSET_STATUS_LABELS: Record<AssetStatus, { label: string; tone: string }> = {
@@ -67,11 +80,14 @@ function normalizeAsset(raw: SkeletonAsset): SkeletonAsset | null {
     (raw.type === "ASSET" ? "시설" : raw.type)?.trim() ||
     "기타";
 
+  const inspection_history = parseInspectionHistory(raw.inspection_history);
+
   return {
     id: raw.id,
     class: cls,
     position: raw.position,
     status: raw.status,
+    ...(inspection_history ? { inspection_history } : {}),
   };
 }
 
@@ -91,7 +107,7 @@ function pointInPolygon(x: number, y: number, polygon: [number, number][]): bool
   return inside;
 }
 
-function findZoneForPosition(
+export function findZoneForAssetPosition(
   zones: ZoneNode[],
   position: SkeletonAsset["position"],
 ): { zoneId: string; zoneName: string } | undefined {
@@ -119,7 +135,7 @@ export function collectAssets(doc: SceneGraphSkeleton): FacilityAssetRef[] {
     const zone =
       zoneId && zoneName
         ? { zoneId, zoneName }
-        : findZoneForPosition(zones, asset.position);
+        : findZoneForAssetPosition(zones, asset.position);
 
     out.push({ ...asset, ...zone });
   };
@@ -143,9 +159,3 @@ export function uniqueAssetClasses(assets: FacilityAssetRef[]): string[] {
   );
 }
 
-export function placeholderMaintenanceRecords(assetId: string) {
-  return [
-    { id: `${assetId}-r1`, date: "2025-11-12", action: "정기 점검", result: "이상 없음" },
-    { id: `${assetId}-r2`, date: "2025-08-03", action: "교체 검토", result: "유효기간 확인" },
-  ];
-}

@@ -1,36 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import WorkspaceView from "@/components/workspace-view";
-import type { AuthUser } from "@/app/api/auth";
+import { useRequireJob } from "@/hooks/use-require-job";
 
 export default function FacilityPage() {
-  const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const userJson = localStorage.getItem("currentUser");
-
-    if (!token || !userJson) {
-      router.replace("/sign-in");
-      return;
-    }
-
-    try {
-      const user = JSON.parse(userJson) as AuthUser;
-
-      if (user.job !== "FACILITY_MANAGER") {
-        router.replace("/emergency");
-        return;
-      }
-
-      setIsReady(true);
-    } catch {
-      router.replace("/sign-in");
-    }
-  }, [router]);
+  const isReady = useRequireJob("FACILITY_MANAGER", "/emergency");
 
   if (!isReady) {
     return <div className="p-20 text-center font-mono text-zinc-400">LOADING WORKSPACE...</div>;

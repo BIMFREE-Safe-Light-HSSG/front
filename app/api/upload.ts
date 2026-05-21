@@ -1,14 +1,6 @@
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-const apiUrl = (path: string) => {
-  if (!API_URL) {
-    throw new Error("NEXT_PUBLIC_API_URL is not configured.");
-  }
-
-  return `${API_URL}${path}`;
-};
+import { apiUrl } from "@/lib/api/client";
 
 const authHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,

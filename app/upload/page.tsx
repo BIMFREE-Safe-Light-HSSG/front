@@ -3,6 +3,7 @@
 import { completeUpload, requestUploadUrl, uploadFileToPresignedUrl } from "@/app/api/upload";
 import type { AuthUser } from "@/app/api/auth";
 import { getBuildings, type ViewerBuilding } from "@/app/api/viewer";
+import { mergeDemoFacilityBuildings } from "@/lib/facility-demo/seed";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -90,7 +91,10 @@ export default function UploadPage() {
           return;
         }
 
-        const managedBuildings = await getBuildings(token, parsedUser.job);
+        const managedBuildings = mergeDemoFacilityBuildings(
+          await getBuildings(token, parsedUser.job),
+          parsedUser
+        );
         const requestedBuildingId = getRequestedBuildingId();
         const defaultBuildingId =
           managedBuildings.find((building) => building.id === requestedBuildingId)?.id ??
