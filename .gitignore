@@ -19,6 +19,9 @@ yarn-error.log*
 # env files
 .env*
 
+# legacy nested app (do not commit as submodule)
+/front/
+
 # vercel
 .vercel
 
