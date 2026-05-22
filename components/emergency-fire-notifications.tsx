@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Flame, X } from "lucide-react";
 
 import {
@@ -13,12 +14,16 @@ import { formatViewerDateTime } from "@/lib/format/datetime";
 import { cn } from "@/lib/utils";
 
 type EmergencyFireNotificationsProps = {
-  onSelectBuilding: (buildingId: string) => void;
+  /** 지정 시 콜백만 호출; 없으면 /emergency?buildingId= 로 이동 */
+  onSelectBuilding?: (buildingId: string) => void;
+  className?: string;
 };
 
 export function EmergencyFireNotifications({
   onSelectBuilding,
+  className,
 }: EmergencyFireNotificationsProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<FireNotification[]>([]);
@@ -43,7 +48,12 @@ export function EmergencyFireNotifications({
   useEffect(() => {
     void refresh();
     const interval = window.setInterval(() => void refresh(), 20_000);
-    return () => window.clearInterval(interval);
+    const onAuthChange = () => void refresh();
+    window.addEventListener("auth-state-changed", onAuthChange);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("auth-state-changed", onAuthChange);
+    };
   }, [refresh]);
 
   const handleOpen = async () => {
@@ -62,13 +72,17 @@ export function EmergencyFireNotifications({
         /* continue navigation */
       }
     }
-    onSelectBuilding(notification.building_id);
+    if (onSelectBuilding) {
+      onSelectBuilding(notification.building_id);
+    } else {
+      router.push(`/emergency?buildingId=${encodeURIComponent(notification.building_id)}`);
+    }
     setOpen(false);
     void refresh();
   };
 
   return (
-    <div className="relative px-4">
+    <div className={cn("relative", className)}>
       <button
         type="button"
         onClick={() => (open ? setOpen(false) : void handleOpen())}

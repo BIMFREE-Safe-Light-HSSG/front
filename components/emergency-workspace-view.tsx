@@ -24,7 +24,6 @@ import {
 } from "@/app/api/viewer";
 import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
 import { getStoredAuthUser } from "@/lib/auth/storage";
-import { EmergencyFireNotifications } from "@/components/emergency-fire-notifications";
 import {
   getBuildingActiveFireCount,
   sortBuildingsByFirePriority,
@@ -96,22 +95,61 @@ export default function EmergencyWorkspaceView() {
         setLoadError("");
 
         const data = mergeDemoWorkspace(
-          await getWorkspace(token, "FIREFIGHTER"),
+          await getWorkspace(token),
           getStoredAuthUser(),
         );
 
         if (!isMounted) return;
 
-        const defaultBuildingId = data.default_building_id ?? data.buildings[0]?.id ?? null;
+        const requestedBuildingId =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("buildingId")
+            : null;
+        const defaultBuildingId =
+          (requestedBuildingId &&
+            data.buildings.some((building) => building.id === requestedBuildingId)
+            ? requestedBuildingId
+            : null) ??
+          data.default_building_id ??
+          data.buildings[0]?.id ??
+          null;
 
         setBuildings(data.buildings);
         setSelectedBuildingId(defaultBuildingId);
-        setSceneGraph(data.default_scene_graph);
 
-        if (data.buildings.length === 0) {
-          setSceneGraphStatus("idle");
+        if (requestedBuildingId && defaultBuildingId === requestedBuildingId) {
+          if (isDemoBuildingId(requestedBuildingId)) {
+            const graph = getDemoSceneGraph(requestedBuildingId);
+            setSceneGraph(graph);
+            setSceneGraphStatus(graph ? "ready" : "empty");
+          } else {
+            try {
+              const graph = await getBuildingSceneGraph(token, requestedBuildingId);
+              setSceneGraph(graph);
+              setSceneGraphStatus("ready");
+            } catch (graphError) {
+              if (handleUnauthorized(graphError, () => router.push("/sign-in"))) {
+                return;
+              }
+              const status = getAxiosErrorStatus(graphError);
+              if (status === 403) {
+                setSceneGraphStatus("forbidden");
+              } else if (status === 404) {
+                setSceneGraphStatus("empty");
+              } else {
+                setSceneGraphStatus("error");
+              }
+            }
+          }
         } else {
-          setSceneGraphStatus(data.default_scene_graph ? "ready" : "empty");
+          setSceneGraph(data.default_scene_graph);
+          setSceneGraphStatus(
+            data.buildings.length === 0
+              ? "idle"
+              : data.default_scene_graph
+                ? "ready"
+                : "empty",
+          );
         }
       } catch (error) {
         if (!isMounted) return;
@@ -126,7 +164,7 @@ export default function EmergencyWorkspaceView() {
       }
     };
 
-    loadBootstrap();
+    void loadBootstrap();
 
     return () => {
       isMounted = false;
@@ -158,7 +196,7 @@ export default function EmergencyWorkspaceView() {
     }
 
     try {
-      const graph = await getBuildingSceneGraph(token, buildingId, "FIREFIGHTER");
+      const graph = await getBuildingSceneGraph(token, buildingId);
       setSceneGraph(graph);
       setSceneGraphStatus("ready");
     } catch (error) {
@@ -245,8 +283,6 @@ export default function EmergencyWorkspaceView() {
             </p>
           </div>
         </header>
-
-        <EmergencyFireNotifications onSelectBuilding={handleSelectBuilding} />
 
         <div className="mb-6 grid min-h-[70vh] grid-cols-1 gap-6 lg:grid-cols-12">
           <div

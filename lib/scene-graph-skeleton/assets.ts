@@ -1,4 +1,5 @@
 import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
+import type { FireIncident } from "@/lib/fire-incidents/types";
 import type { AssetStatus, FacilityAssetRef, SceneGraphSkeleton, SkeletonAsset, ZoneNode } from "./types";
 
 export type AssetClassStyle = {
@@ -91,6 +92,9 @@ function normalizeAsset(raw: SkeletonAsset): SkeletonAsset | null {
   };
 }
 
+/** skeleton Z-up: center[2] ± height/2 */
+const ZONE_Z_MATCH_EPSILON = 0.02;
+
 function pointInPolygon(x: number, y: number, polygon: [number, number][]): boolean {
   let inside = false;
 
@@ -107,19 +111,91 @@ function pointInPolygon(x: number, y: number, polygon: [number, number][]): bool
   return inside;
 }
 
+function zoneVerticalBounds(zone: ZoneNode): { minZ: number; maxZ: number } {
+  const half = zone.geometry.height / 2;
+  const centerZ = zone.geometry.center[2];
+  return { minZ: centerZ - half, maxZ: centerZ + half };
+}
+
+function isPositionInsideZoneVertical(z: number, zone: ZoneNode): boolean {
+  const { minZ, maxZ } = zoneVerticalBounds(zone);
+  return z >= minZ - ZONE_Z_MATCH_EPSILON && z <= maxZ + ZONE_Z_MATCH_EPSILON;
+}
+
+function verticalDistanceToZone(z: number, zone: ZoneNode): number {
+  const { minZ, maxZ } = zoneVerticalBounds(zone);
+  if (z < minZ) return minZ - z;
+  if (z > maxZ) return z - maxZ;
+  return 0;
+}
+
+function isPositionInZonePlan(x: number, y: number, zone: ZoneNode): boolean {
+  return pointInPolygon(x, y, zone.geometry.coordinates);
+}
+
+/** 평면·수직 모두 고려해 가장 적합한 구역 선택 */
+function pickBestZoneForPosition(
+  zones: ZoneNode[],
+  x: number,
+  y: number,
+  z: number,
+): ZoneNode | undefined {
+  const planMatches = zones.filter((zone) => isPositionInZonePlan(x, y, zone));
+  if (planMatches.length === 0) return undefined;
+
+  const ranked = planMatches.map((zone) => ({
+    zone,
+    containsZ: isPositionInsideZoneVertical(z, zone),
+    verticalDistance: verticalDistanceToZone(z, zone),
+    height: zone.geometry.height,
+    centerZDelta: Math.abs(zone.geometry.center[2] - z),
+  }));
+
+  const contained = ranked.filter((entry) => entry.containsZ);
+  const pool = contained.length > 0 ? contained : ranked;
+
+  pool.sort((a, b) => {
+    if (a.verticalDistance !== b.verticalDistance) {
+      return a.verticalDistance - b.verticalDistance;
+    }
+    if (a.height !== b.height) {
+      return a.height - b.height;
+    }
+    return a.centerZDelta - b.centerZDelta;
+  });
+
+  return pool[0]?.zone;
+}
+
 export function findZoneForAssetPosition(
   zones: ZoneNode[],
   position: SkeletonAsset["position"],
 ): { zoneId: string; zoneName: string } | undefined {
-  const [x, y] = position;
+  const [x, y, z] = position;
+  const zone = pickBestZoneForPosition(zones, x, y, z);
 
-  for (const zone of zones) {
-    if (pointInPolygon(x, y, zone.geometry.coordinates)) {
-      return { zoneId: zone.id, zoneName: zone.name };
+  if (!zone) {
+    return undefined;
+  }
+
+  return { zoneId: zone.id, zoneName: zone.name };
+}
+
+/** 화재 좌표가 속한 구역 ID (소방 뷰 붉은 강조용) */
+export function zoneIdsContainingFireIncidents(
+  zones: ZoneNode[],
+  incidents: readonly FireIncident[],
+): Set<string> {
+  const ids = new Set<string>();
+
+  for (const incident of incidents) {
+    const match = findZoneForAssetPosition(zones, incident.position);
+    if (match) {
+      ids.add(match.zoneId);
     }
   }
 
-  return undefined;
+  return ids;
 }
 
 export function collectAssets(doc: SceneGraphSkeleton): FacilityAssetRef[] {

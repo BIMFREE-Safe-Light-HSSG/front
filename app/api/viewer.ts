@@ -1,7 +1,8 @@
 import axios from "axios";
-import type { BuildingLocationPayload, UserJob } from "@/app/api/auth";
+import type { BuildingLocationPayload } from "@/app/api/auth";
 import { apiUrl } from "@/lib/api/client";
 
+/** FRONT.md — BuildingSummaryResponse */
 export type ViewerBuilding = {
   id: string;
   name: string;
@@ -30,6 +31,7 @@ export type SceneGraph = {
   };
 };
 
+/** FRONT.md에 workspace API 없음 — 클라이언트에서 조합 */
 export type ViewerBootstrap = {
   buildings: ViewerBuilding[];
   default_building_id: string | null;
@@ -55,44 +57,53 @@ const authHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,
 });
 
-const workspacePrefix = (job: UserJob | null | undefined) => {
-  return job === "FIREFIGHTER" ? "/emergency" : "/facility";
-};
-
-export const getWorkspace = async (
-  accessToken: string,
-  job: UserJob | null | undefined
-): Promise<ViewerBootstrap> => {
-  const response = await axios.get(apiUrl(`${workspacePrefix(job)}/workspace`), {
+/** GET /buildings — 시설·소방 공통, 서버가 역할별 필터링 */
+export const getBuildings = async (accessToken: string): Promise<ViewerBuilding[]> => {
+  const response = await axios.get<ViewerBuilding[]>(apiUrl("/buildings"), {
     headers: authHeaders(accessToken),
   });
 
   return response.data;
 };
 
+/** GET /buildings/{building_id}/scene-graph */
 export const getBuildingSceneGraph = async (
   accessToken: string,
   buildingId: string,
-  job: UserJob | null | undefined
 ): Promise<SceneGraph> => {
-  const response = await axios.get(apiUrl(`${workspacePrefix(job)}/buildings/${buildingId}/scene-graph`), {
-    headers: authHeaders(accessToken),
-  });
+  const response = await axios.get<SceneGraph>(
+    apiUrl(`/buildings/${buildingId}/scene-graph`),
+    {
+      headers: authHeaders(accessToken),
+    },
+  );
 
   return response.data;
 };
 
-export const getBuildings = async (
-  accessToken: string,
-  job: UserJob | null | undefined
-): Promise<ViewerBuilding[]> => {
-  const response = await axios.get(apiUrl(`${workspacePrefix(job)}/buildings`), {
-    headers: authHeaders(accessToken),
-  });
+/** 워크스페이스 초기 데이터 — FRONT.md 권장 플로우 기반 */
+export const getWorkspace = async (accessToken: string): Promise<ViewerBootstrap> => {
+  const buildings = await getBuildings(accessToken);
+  const defaultBuilding =
+    buildings.find((building) => building.has_scene_graph) ?? buildings[0] ?? null;
 
-  return response.data;
+  let default_scene_graph: SceneGraph | null = null;
+  if (defaultBuilding?.has_scene_graph) {
+    try {
+      default_scene_graph = await getBuildingSceneGraph(accessToken, defaultBuilding.id);
+    } catch {
+      default_scene_graph = null;
+    }
+  }
+
+  return {
+    buildings,
+    default_building_id: defaultBuilding?.id ?? null,
+    default_scene_graph,
+  };
 };
 
+/** POST /facility/buildings */
 export const createBuilding = async ({
   accessToken,
   payload,
@@ -100,7 +111,7 @@ export const createBuilding = async ({
   accessToken: string;
   payload: BuildingLocationPayload;
 }): Promise<CreatedBuilding> => {
-  const response = await axios.post(apiUrl("/facility/buildings"), payload, {
+  const response = await axios.post<CreatedBuilding>(apiUrl("/facility/buildings"), payload, {
     headers: {
       ...authHeaders(accessToken),
       "Content-Type": "application/json",

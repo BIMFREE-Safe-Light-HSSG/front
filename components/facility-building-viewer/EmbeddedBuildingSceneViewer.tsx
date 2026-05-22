@@ -36,7 +36,12 @@ import {
 import { FIRE_INCIDENTS_CHANGED_EVENT } from "@/lib/fire-incidents/storage";
 import type { FireSeverity } from "@/lib/fire-incidents/types";
 import { FireIncidentRegisterDialog } from "@/components/facility-building-viewer/FireIncidentRegisterDialog";
-import { collectAssets, findZoneForAssetPosition, uniqueAssetClasses } from "@/lib/scene-graph-skeleton/assets";
+import {
+  collectAssets,
+  findZoneForAssetPosition,
+  uniqueAssetClasses,
+  zoneIdsContainingFireIncidents,
+} from "@/lib/scene-graph-skeleton/assets";
 import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
 import { filterAssetsForViewerMode } from "@/lib/scene-graph-skeleton/structural-assets";
 import {
@@ -275,6 +280,7 @@ export function EmbeddedBuildingSceneViewer({
   const [fireSubmitting, setFireSubmitting] = useState(false);
 
   const canManageFires = enableFacilityTools && Boolean(buildingId);
+  const firefighterZoneView = !enableFacilityTools;
   const showFireLayer = Boolean(buildingId);
   /** 시설 페이지 「Activate Response」와 연동 */
   const responseActive = canManageFires && isEmergency;
@@ -314,6 +320,11 @@ export function EmbeddedBuildingSceneViewer({
         ? layerVisibility
         : { zones: layerVisibility.zones, assets: true, fires: layerVisibility.fires },
     [enableFacilityTools, layerVisibility],
+  );
+
+  const fireZoneIds = useMemo(
+    () => (firefighterZoneView ? zoneIdsContainingFireIncidents(zones, fireIncidents) : undefined),
+    [firefighterZoneView, zones, fireIncidents],
   );
 
   const reloadFireIncidents = useCallback(async () => {
@@ -700,6 +711,8 @@ export function EmbeddedBuildingSceneViewer({
         searchHighlightActive={searchFiltersActive}
         highlightZoneIds={highlightZoneIds}
         highlightAssetIds={highlightAssetIds}
+        firefighterZoneView={firefighterZoneView}
+        fireZoneIds={fireZoneIds}
         onSelectZone={(id) => {
           if (firePlacementActive) return;
           setSelectedZoneId(id);

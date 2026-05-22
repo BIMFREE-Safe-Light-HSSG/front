@@ -23,6 +23,8 @@ import {
   createZoneExtrudeGeometry,
   createZoneFloorPickGeometry,
   createZoneOutlineGeometry,
+  FIREFIGHTER_FIRE_ZONE_COLOR,
+  FIREFIGHTER_NEUTRAL_ZONE_COLOR,
   zoneAccentColor,
   zoneMeshTransform,
 } from "@/lib/scene-graph-skeleton/zone-geometry";
@@ -57,6 +59,9 @@ export type BuildingSceneCanvasProps = {
   selectedFireId?: string | null;
   onSelectFire?: (id: string) => void;
   placementVariant?: "default" | "fire";
+  /** 소방 뷰: 구역 단일색 + 화재 구역만 붉게 */
+  firefighterZoneView?: boolean;
+  fireZoneIds?: ReadonlySet<string>;
 };
 
 function disableRaycast(mesh: THREE.Mesh | null) {
@@ -71,6 +76,8 @@ function ZonePanel({
   dimmed,
   placementMode,
   showMesh,
+  firefighterZoneView,
+  isFireZone,
   onSelect,
   onPlacementPick,
 }: {
@@ -81,11 +88,17 @@ function ZonePanel({
   dimmed: boolean;
   placementMode: boolean;
   showMesh: boolean;
+  firefighterZoneView: boolean;
+  isFireZone: boolean;
   onSelect: (id: string) => void;
   onPlacementPick: (position: Vec3) => void;
 }) {
   const fillRef = useRef<THREE.Mesh>(null);
-  const color = zoneAccentColor(index);
+  const color = firefighterZoneView
+    ? isFireZone
+      ? FIREFIGHTER_FIRE_ZONE_COLOR
+      : FIREFIGHTER_NEUTRAL_ZONE_COLOR
+    : zoneAccentColor(index);
   const geometry = useMemo(() => createZoneExtrudeGeometry(zone), [zone]);
   const floorPick = useMemo(() => createZoneFloorPickGeometry(zone), [zone]);
   const outline = useMemo(() => createZoneOutlineGeometry(zone), [zone]);
@@ -95,6 +108,25 @@ function ZonePanel({
   );
 
   const material = useMemo(() => {
+    if (firefighterZoneView) {
+      if (dimmed && !isFireZone) {
+        return createGlassZoneMaterial(FIREFIGHTER_NEUTRAL_ZONE_COLOR, { opacity: 0.06 });
+      }
+      if (isFireZone) {
+        return createGlassZoneMaterial(FIREFIGHTER_FIRE_ZONE_COLOR, {
+          opacity: selected ? 0.62 : highlighted ? 0.56 : 0.48,
+          color: selected ? 0xfca5a5 : FIREFIGHTER_FIRE_ZONE_COLOR,
+          emissive: 0xb91c1c,
+          emissiveIntensity: selected ? 0.55 : highlighted ? 0.48 : 0.4,
+        });
+      }
+      return createGlassZoneMaterial(FIREFIGHTER_NEUTRAL_ZONE_COLOR, {
+        opacity: selected ? 0.38 : highlighted ? 0.34 : 0.28,
+        color: selected ? 0xc8d9eb : FIREFIGHTER_NEUTRAL_ZONE_COLOR,
+        emissive: 0x1e3a5f,
+        emissiveIntensity: selected ? 0.22 : 0.14,
+      });
+    }
     if (highlighted) {
       return createGlassZoneMaterial(color, {
         opacity: 0.58,
@@ -107,27 +139,59 @@ function ZonePanel({
       return createGlassZoneMaterial(color, { opacity: 0.07 });
     }
     return createGlassZoneMaterial(selected ? 0xffffff : color);
-  }, [color, selected, highlighted, dimmed]);
+  }, [color, selected, highlighted, dimmed, firefighterZoneView, isFireZone]);
 
   const outlineMaterial = useMemo(
     () =>
       new THREE.LineBasicMaterial({
-        color: highlighted ? 0xfde68a : selected ? 0xffffff : color,
+        color: firefighterZoneView
+          ? isFireZone
+            ? selected
+              ? 0xfca5a5
+              : 0xef4444
+            : selected
+              ? 0xe2e8f0
+              : FIREFIGHTER_NEUTRAL_ZONE_COLOR
+          : highlighted
+            ? 0xfde68a
+            : selected
+              ? 0xffffff
+              : color,
         transparent: true,
-        opacity: highlighted ? 1 : dimmed ? 0.2 : selected ? 0.95 : 0.55,
+        opacity: firefighterZoneView
+          ? isFireZone
+            ? 0.9
+            : dimmed
+              ? 0.18
+              : selected
+                ? 0.85
+                : 0.5
+          : highlighted
+            ? 1
+            : dimmed
+              ? 0.2
+              : selected
+                ? 0.95
+                : 0.55,
       }),
-    [color, selected, highlighted, dimmed],
+    [color, selected, highlighted, dimmed, firefighterZoneView, isFireZone],
   );
 
   const glowMaterial = useMemo(
     () =>
       new THREE.LineBasicMaterial({
-        color: highlighted ? 0xfbbf24 : color,
+        color: firefighterZoneView
+          ? isFireZone
+            ? 0xf87171
+            : FIREFIGHTER_NEUTRAL_ZONE_COLOR
+          : highlighted
+            ? 0xfbbf24
+            : color,
         transparent: true,
-        opacity: 0.85,
+        opacity: firefighterZoneView ? (isFireZone ? 0.95 : 0.45) : 0.85,
         depthWrite: false,
       }),
-    [color, highlighted],
+    [color, highlighted, firefighterZoneView, isFireZone],
   );
 
   const transform = useMemo(() => zoneMeshTransform(zone), [zone]);
@@ -257,6 +321,8 @@ function SceneContent({
   selectedFireId = null,
   onSelectFire,
   placementVariant = "default",
+  firefighterZoneView = false,
+  fireZoneIds,
 }: BuildingSceneCanvasProps) {
   const bounds = useMemo(() => boundsFromZones(zones, assets), [zones, assets]);
   const draftAsset = useMemo((): FacilityAssetRef | null => {
@@ -311,7 +377,9 @@ function SceneContent({
         <group>
           {zones.map((zone, index) => {
             const zHighlighted = highlightZoneIds.has(zone.id);
-            const zDimmed = searchHighlightActive && !zHighlighted;
+            const isFireZone = fireZoneIds?.has(zone.id) ?? false;
+            const zDimmed =
+              searchHighlightActive && !zHighlighted && !(firefighterZoneView && isFireZone);
             return (
               <ZonePanel
                 key={zone.id}
@@ -322,6 +390,8 @@ function SceneContent({
                 dimmed={zDimmed}
                 placementMode={placementMode}
                 showMesh={showZoneMeshes}
+                firefighterZoneView={firefighterZoneView}
+                isFireZone={isFireZone}
                 onSelect={(id) => onSelectZone(id)}
                 onPlacementPick={onPlacementPick}
               />

@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, Building2, Database, LogOut, ShieldCheck, UploadCloud } from "lucide-react";
+import {
+  ArrowRight,
+  Building2,
+  Database,
+  LogOut,
+  ShieldCheck,
+  UploadCloud,
+  User,
+} from "lucide-react";
 import { getMe, type AuthUser } from "@/app/api/auth";
+import { EmergencyFireNotifications } from "@/components/emergency-fire-notifications";
 import { Button } from "@/components/ui/button";
-
 const getStoredUser = () => {
   const userJson = localStorage.getItem("currentUser");
 
@@ -75,7 +83,7 @@ export default function Home() {
       </div>
 
       <section className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-950 text-white shadow-lg">
               <Building2 className="h-5 w-5" />
@@ -89,14 +97,25 @@ export default function Home() {
           </Link>
 
           {user ? (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-full border border-red-900/10 bg-white/40 px-5 py-2 text-xs font-bold uppercase tracking-widest text-zinc-500 backdrop-blur-md transition-colors hover:text-red-600"
-            >
-              <LogOut className="h-4 w-4" />
-              Logout
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {isFacilityManager ? (
+                <Link
+                  href="/my-page"
+                  className="inline-flex items-center gap-2 rounded-full border border-red-900/10 bg-white/40 px-4 py-2 text-xs font-bold text-zinc-600 backdrop-blur-md transition-colors hover:bg-white/70"
+                >
+                  <User className="h-3.5 w-3.5" />
+                  마이페이지
+                </Link>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex items-center gap-2 rounded-full border border-red-900/10 bg-white/40 px-5 py-2 text-xs font-bold uppercase tracking-widest text-zinc-500 backdrop-blur-md transition-colors hover:text-red-600"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
           ) : null}
         </header>
 
@@ -161,12 +180,15 @@ export default function Home() {
                     />
                   </>
                 ) : (
-                  <ActionCard
-                    href="/emergency"
-                    icon={<ShieldCheck className="h-5 w-5" />}
-                    title="건물 정보 조회"
-                    description="관할 지구 내 건물 목록과 scene graph를 확인합니다."
-                  />
+                  <>
+                    <EmergencyFireNotifications />
+                    <ActionCard
+                      href="/emergency"
+                      icon={<ShieldCheck className="h-5 w-5" />}
+                      title="건물 정보 조회"
+                      description="관할 지구 내 건물 목록과 scene graph를 확인합니다."
+                    />
+                  </>
                 )
               ) : (
                 <>

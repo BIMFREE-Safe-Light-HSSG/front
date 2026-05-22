@@ -11,29 +11,66 @@ import type { FacilityAssetRef, ZoneNode } from "@/lib/scene-graph-skeleton/type
 
 const DOOR_WIDTH = 0.92;
 const DOOR_HEIGHT = 2.1;
-const DOOR_DEPTH = 0.1;
+const DOOR_DEPTH = 0.14;
 const DOOR_FRAME = 0.08;
 /** skeleton Z(수직) → Three Y 기준으로 문을 살짝 내려 바닥·벽면에 맞춤 */
 const DOOR_VERTICAL_SINK = 0.2;
 
-/** 뷰어 캔버스(#0c1220) · 구역 팔레트 · 골드 하이라이트와 맞춘 문 색 */
+/** 어두운 캔버스(#0c1220) 위에서도 잘 보이도록 밝은 대비·외곽선 */
 const DOOR_COLORS = {
-  frame: "#5c6b82",
-  panel: "#a8bdd9",
-  frameEmissive: "#1e3a5f",
-  panelEmissive: "#334155",
+  frame: "#8fa8c8",
+  panel: "#dce9f8",
+  frameEmissive: "#3b5f8f",
+  panelEmissive: "#5b7aa8",
+  outline: "#e8f4ff",
+  glow: "#60a5fa",
   frameActive: "#fbbf24",
-  panelActive: "#fde68a",
+  panelActive: "#fff7d6",
   frameEmissiveActive: "#b45309",
   panelEmissiveActive: "#d97706",
-  handle: "#e2e8f0",
+  outlineActive: "#fef3c7",
+  handle: "#f1f5f9",
   handleActive: "#fffbeb",
 } as const;
 
 const WINDOW_WIDTH = 1.35;
 const WINDOW_HEIGHT = 1.05;
-const WINDOW_FRAME = 0.07;
-const WINDOW_DEPTH = 0.08;
+const WINDOW_FRAME = 0.08;
+const WINDOW_DEPTH = 0.12;
+
+function useBoxOutline(width: number, height: number, depth: number) {
+  return useMemo(() => {
+    const box = new THREE.BoxGeometry(width, height, depth);
+    const edges = new THREE.EdgesGeometry(box);
+    box.dispose();
+    return edges;
+  }, [width, height, depth]);
+}
+
+function BoxOutline({
+  width,
+  height,
+  depth,
+  color,
+  opacity = 0.92,
+  position = [0, 0, 0] as [number, number, number],
+  renderOrder = 12,
+}: {
+  width: number;
+  height: number;
+  depth: number;
+  color: string;
+  opacity?: number;
+  position?: [number, number, number];
+  renderOrder?: number;
+}) {
+  const geometry = useBoxOutline(width, height, depth);
+  return (
+    <lineSegments geometry={geometry} position={position} renderOrder={renderOrder}>
+      <lineBasicMaterial color={color} transparent opacity={opacity} depthTest={false} />
+    </lineSegments>
+  );
+}
 
 export type StructuralAssetMeshProps = {
   asset: FacilityAssetRef;
@@ -61,54 +98,86 @@ function DoorMesh({
   active: boolean;
   dimmed: boolean;
 }) {
-  const dim = dimmed ? 0.35 : 1;
+  const dim = dimmed ? 0.4 : 1;
   const frameColor = active ? DOOR_COLORS.frameActive : DOOR_COLORS.frame;
   const panelColor = active ? DOOR_COLORS.panelActive : DOOR_COLORS.panel;
   const frameEmissive = active ? DOOR_COLORS.frameEmissiveActive : DOOR_COLORS.frameEmissive;
   const panelEmissive = active ? DOOR_COLORS.panelEmissiveActive : DOOR_COLORS.panelEmissive;
+  const outlineColor = active ? DOOR_COLORS.outlineActive : DOOR_COLORS.outline;
+  const glowColor = active ? "#fcd34d" : DOOR_COLORS.glow;
 
   return (
-    <group position={[0, DOOR_HEIGHT / 2, 0]}>
-      <mesh castShadow receiveShadow>
+    <group position={[0, DOOR_HEIGHT / 2, 0]} renderOrder={10}>
+      <mesh position={[0, 0, -DOOR_DEPTH * 0.35]} renderOrder={8}>
+        <planeGeometry args={[DOOR_WIDTH + 0.18, DOOR_HEIGHT + 0.12]} />
+        <meshBasicMaterial
+          color={glowColor}
+          transparent
+          opacity={(active ? 0.28 : 0.16) * dim}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh castShadow receiveShadow renderOrder={9}>
         <boxGeometry args={[DOOR_WIDTH, DOOR_HEIGHT, DOOR_DEPTH]} />
         <meshStandardMaterial
           color={frameColor}
           emissive={frameEmissive}
-          emissiveIntensity={(active ? 0.42 : 0.28) * dim}
-          metalness={0.2}
-          roughness={0.55}
+          emissiveIntensity={(active ? 0.55 : 0.42) * dim}
+          metalness={0.15}
+          roughness={0.45}
           transparent={dimmed}
           opacity={dim}
         />
       </mesh>
-      <mesh position={[0, 0, DOOR_DEPTH * 0.35]} castShadow>
+      <mesh position={[0, 0, DOOR_DEPTH * 0.42]} castShadow renderOrder={10}>
         <boxGeometry
-          args={[DOOR_WIDTH - DOOR_FRAME * 2, DOOR_HEIGHT - DOOR_FRAME * 2, DOOR_DEPTH * 0.55]}
+          args={[DOOR_WIDTH - DOOR_FRAME * 2, DOOR_HEIGHT - DOOR_FRAME * 2, DOOR_DEPTH * 0.5]}
         />
         <meshStandardMaterial
           color={panelColor}
           emissive={panelEmissive}
-          emissiveIntensity={(active ? 0.38 : 0.22) * dim}
-          metalness={0.12}
-          roughness={0.48}
+          emissiveIntensity={(active ? 0.48 : 0.36) * dim}
+          metalness={0.08}
+          roughness={0.38}
           transparent={dimmed}
           opacity={dim}
         />
       </mesh>
-      <mesh position={[DOOR_WIDTH * 0.32, -DOOR_HEIGHT * 0.05, DOOR_DEPTH * 0.52]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.025, 0.025, 0.12, 10]} />
+      <BoxOutline
+        width={DOOR_WIDTH + 0.02}
+        height={DOOR_HEIGHT + 0.02}
+        depth={DOOR_DEPTH + 0.04}
+        color={outlineColor}
+        opacity={(active ? 1 : 0.88) * dim}
+        position={[0, 0, DOOR_DEPTH * 0.5]}
+      />
+      <mesh position={[0, -DOOR_HEIGHT * 0.5 + 0.04, DOOR_DEPTH * 0.48]} renderOrder={10}>
+        <boxGeometry args={[DOOR_WIDTH + 0.06, 0.06, DOOR_DEPTH * 0.35]} />
+        <meshStandardMaterial
+          color={active ? "#fbbf24" : "#94a3b8"}
+          emissive={active ? "#b45309" : "#475569"}
+          emissiveIntensity={0.35 * dim}
+          metalness={0.3}
+          roughness={0.4}
+        />
+      </mesh>
+      <mesh
+        position={[DOOR_WIDTH * 0.32, -DOOR_HEIGHT * 0.05, DOOR_DEPTH * 0.58]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.03, 0.03, 0.14, 10]} />
         <meshStandardMaterial
           color={active ? DOOR_COLORS.handleActive : DOOR_COLORS.handle}
-          emissive={active ? "#fbbf24" : "#64748b"}
-          emissiveIntensity={active ? 0.35 : 0.15}
-          metalness={0.65}
-          roughness={0.28}
+          emissive={active ? "#fbbf24" : "#cbd5e1"}
+          emissiveIntensity={active ? 0.45 : 0.28}
+          metalness={0.7}
+          roughness={0.22}
         />
       </mesh>
       {active ? (
-        <mesh position={[0, DOOR_HEIGHT * 0.42, DOOR_DEPTH * 0.65]}>
-          <boxGeometry args={[0.04, 0.04, 0.02]} />
-          <meshStandardMaterial color="#fbbf24" emissive="#f59e0b" emissiveIntensity={0.55} />
+        <mesh position={[0, DOOR_HEIGHT * 0.42, DOOR_DEPTH * 0.72]} renderOrder={11}>
+          <boxGeometry args={[0.05, 0.05, 0.02]} />
+          <meshStandardMaterial color="#fbbf24" emissive="#f59e0b" emissiveIntensity={0.7} />
         </mesh>
       ) : null}
     </group>
@@ -122,64 +191,110 @@ function WindowMesh({
   active: boolean;
   dimmed: boolean;
 }) {
-  const dim = dimmed ? 0.35 : 1;
+  const dim = dimmed ? 0.4 : 1;
+  const frameColor = active ? "#f8fafc" : "#cbd5e1";
+  const frameEmissive = active ? "#0ea5e9" : "#38bdf8";
+  const outlineColor = active ? "#fef9c3" : "#f0f9ff";
+  const glowColor = active ? "#7dd3fc" : "#38bdf8";
+
   const frameMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: active ? "#e2e8f0" : "#94a3b8",
-        emissive: active ? "#0369a1" : "#000000",
-        emissiveIntensity: active ? 0.2 : 0,
-        metalness: 0.55,
-        roughness: 0.35,
+        color: frameColor,
+        emissive: frameEmissive,
+        emissiveIntensity: (active ? 0.35 : 0.28) * dim,
+        metalness: 0.4,
+        roughness: 0.3,
         transparent: dimmed,
         opacity: dim,
       }),
-    [active, dimmed, dim],
+    [active, dimmed, dim, frameColor, frameEmissive],
   );
 
   const glassMat = useMemo(
     () =>
       new THREE.MeshPhysicalMaterial({
-        color: active ? "#bae6fd" : "#7dd3fc",
-        emissive: active ? "#0ea5e9" : "#0284c7",
-        emissiveIntensity: active ? 0.15 : 0.05,
+        color: active ? "#e0f2fe" : "#bae6fd",
+        emissive: active ? "#38bdf8" : "#0ea5e9",
+        emissiveIntensity: (active ? 0.35 : 0.28) * dim,
         metalness: 0,
-        roughness: 0.05,
-        transmission: 0.82,
-        thickness: 0.15,
+        roughness: 0.02,
+        transmission: 0.55,
+        thickness: 0.2,
         ior: 1.45,
         transparent: true,
-        opacity: dimmed ? 0.25 : 0.88,
+        opacity: dimmed ? 0.35 : 0.95,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
     [active, dimmed, dim],
   );
 
+  const mullionMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: active ? "#e2e8f0" : "#94a3b8",
+        emissive: active ? "#0284c7" : "#475569",
+        emissiveIntensity: 0.22 * dim,
+        metalness: 0.55,
+        roughness: 0.35,
+      }),
+    [active, dim],
+  );
+
   const innerW = WINDOW_WIDTH - WINDOW_FRAME * 2;
   const innerH = WINDOW_HEIGHT - WINDOW_FRAME * 2;
 
   return (
-    <group position={[0, WINDOW_HEIGHT / 2, 0]}>
-      <mesh material={frameMat} castShadow>
+    <group position={[0, WINDOW_HEIGHT / 2, 0]} renderOrder={10}>
+      <mesh position={[0, 0, -WINDOW_DEPTH * 0.3]} renderOrder={8}>
+        <planeGeometry args={[WINDOW_WIDTH + 0.2, WINDOW_HEIGHT + 0.16]} />
+        <meshBasicMaterial
+          color={glowColor}
+          transparent
+          opacity={(active ? 0.32 : 0.2) * dim}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh material={frameMat} castShadow renderOrder={9}>
         <boxGeometry args={[WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_DEPTH]} />
       </mesh>
-      <mesh position={[0, 0, WINDOW_DEPTH * 0.2]} material={glassMat}>
-        <boxGeometry args={[innerW, innerH, 0.02]} />
+      <mesh position={[0, 0, WINDOW_DEPTH * 0.28]} material={glassMat} renderOrder={10}>
+        <boxGeometry args={[innerW, innerH, 0.03]} />
       </mesh>
-      <mesh position={[0, 0, WINDOW_DEPTH * 0.28]} material={frameMat}>
-        <boxGeometry args={[WINDOW_FRAME * 0.9, innerH, 0.03]} />
+      <mesh position={[0, 0, WINDOW_DEPTH * 0.38]} material={mullionMat} renderOrder={11}>
+        <boxGeometry args={[WINDOW_FRAME, innerH, 0.04]} />
       </mesh>
-      <mesh position={[0, 0, WINDOW_DEPTH * 0.28]} material={frameMat}>
-        <boxGeometry args={[innerW, WINDOW_FRAME * 0.9, 0.03]} />
+      <mesh position={[0, 0, WINDOW_DEPTH * 0.38]} material={mullionMat} renderOrder={11}>
+        <boxGeometry args={[innerW, WINDOW_FRAME, 0.04]} />
       </mesh>
-      <mesh position={[0, 0, WINDOW_DEPTH * 0.32]}>
-        <boxGeometry args={[0.03, innerH, 0.02]} />
-        <meshStandardMaterial color="#64748b" metalness={0.5} roughness={0.4} />
+      <BoxOutline
+        width={WINDOW_WIDTH + 0.02}
+        height={WINDOW_HEIGHT + 0.02}
+        depth={WINDOW_DEPTH + 0.04}
+        color={outlineColor}
+        opacity={(active ? 1 : 0.9) * dim}
+        position={[0, 0, WINDOW_DEPTH * 0.48]}
+      />
+      <mesh position={[0, 0, WINDOW_DEPTH * 0.44]} renderOrder={11}>
+        <boxGeometry args={[0.04, innerH, 0.03]} />
+        <meshStandardMaterial
+          color="#f1f5f9"
+          emissive="#7dd3fc"
+          emissiveIntensity={0.25 * dim}
+          metalness={0.35}
+          roughness={0.35}
+        />
       </mesh>
-      <mesh position={[0, 0, WINDOW_DEPTH * 0.32]}>
-        <boxGeometry args={[innerW, 0.03, 0.02]} />
-        <meshStandardMaterial color="#64748b" metalness={0.5} roughness={0.4} />
+      <mesh position={[0, 0, WINDOW_DEPTH * 0.44]} renderOrder={11}>
+        <boxGeometry args={[innerW, 0.04, 0.03]} />
+        <meshStandardMaterial
+          color="#f1f5f9"
+          emissive="#7dd3fc"
+          emissiveIntensity={0.25 * dim}
+          metalness={0.35}
+          roughness={0.35}
+        />
       </mesh>
     </group>
   );

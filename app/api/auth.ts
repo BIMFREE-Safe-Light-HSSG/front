@@ -67,24 +67,18 @@ export type BuildingLocationPayload = {
   region_3depth_name?: string;
 };
 
+/** POST /auth/signup — 소방대원 관할 (FRONT.md) */
+export type SignupJurisdictionPayload = {
+  code: string;
+  name: string;
+};
+
 export type SignupPayload = {
   name: string;
   job: UserJob;
   email: string;
   password: string;
-  building_location?: BuildingLocationPayload;
-  jurisdiction?: {
-    code?: string;
-    name?: string;
-    address?: string;
-    latitude?: number;
-    longitude?: number;
-    provider?: string;
-    provider_place_id?: string;
-    region_1depth_name?: string;
-    region_2depth_name?: string;
-    region_3depth_name?: string;
-  };
+  jurisdiction?: SignupJurisdictionPayload;
 };
 
 export const signin = async (email: string, password: string): Promise<LoginResponse> => {

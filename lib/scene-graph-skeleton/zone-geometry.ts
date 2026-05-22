@@ -7,6 +7,11 @@ const ZONE_PALETTE = [
   0x7eb8ff, 0x6ee7b7, 0xfbbf24, 0xc4b5fd, 0xf9a8d4, 0x67e8f9, 0xfdba74, 0xa5b4fc,
 ] as const
 
+/** 소방 뷰: 화재 없는 구역 단일 색 */
+export const FIREFIGHTER_NEUTRAL_ZONE_COLOR = 0x5b7a9a
+/** 소방 뷰: 화재 지점이 있는 구역 */
+export const FIREFIGHTER_FIRE_ZONE_COLOR = 0xdc2626
+
 export function zoneAccentColor(index: number): number {
   return ZONE_PALETTE[index % ZONE_PALETTE.length]!
 }
