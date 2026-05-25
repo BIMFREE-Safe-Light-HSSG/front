@@ -6,12 +6,15 @@ import {
   requestUploadUrl,
   uploadFileToPresignedUrl,
 } from "@/app/api/upload";
+import { isAcceptedArchive, validateZipContents } from "@/lib/upload/validate";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowRight,
   FileText,
   Gem,
+  Loader2,
   MapPin,
   UploadCloud,
 } from "lucide-react";
@@ -67,6 +70,11 @@ function UploadPageContent() {
   const [progress, setProgress] = useState(0);
   const [isEmergency, setIsEmergency] = useState(false);
 
+  // 파일 유효성 검사 상태
+  const [isValidating, setIsValidating] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [invalidFileList, setInvalidFileList] = useState<string[]>([]);
+
   const selectedBuilding = useMemo(
     () => buildings.find((building) => building.id === selectedBuildingId) ?? null,
     [buildings, selectedBuildingId],
@@ -77,23 +85,53 @@ function UploadPageContent() {
     e.stopPropagation();
   };
 
-  const setFile = (file: File) => {
-    setSelectedFile(file);
-    setUploadStatus("idle");
-    setProgress(0);
-    setIsEmergency(false);
+  /**
+   * 파일 선택 공통 핸들러
+   * 1) ZIP 여부 확인 → 2) ZIP 내부 동영상 전용 검사
+   */
+  const handleFileSelect = async (file: File) => {
+    // 이전 상태 초기화
+    setFileError(null);
+    setInvalidFileList([]);
+    setSelectedFile(null);
+
+    // ① ZIP 파일인지 확인
+    if (!isAcceptedArchive(file)) {
+      setFileError("ZIP 압축 파일(.zip)만 업로드할 수 있습니다.");
+      return;
+    }
+
+    // ② ZIP 내부 콘텐츠 검사
+    setIsValidating(true);
+    try {
+      const result = await validateZipContents(file);
+      if (!result.valid) {
+        setFileError(result.reason);
+        setInvalidFileList(result.invalidFiles ?? []);
+        return;
+      }
+      // 검사 통과 → 파일 등록
+      setSelectedFile(file);
+      setUploadStatus("idle");
+      setProgress(0);
+      setIsEmergency(false);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     preventDefault(e);
     if (e.dataTransfer.files?.[0]) {
-      setFile(e.dataTransfer.files[0]);
+      void handleFileSelect(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
+      void handleFileSelect(e.target.files[0]);
+      // 같은 파일을 다시 선택할 수 있도록 value 초기화
+      e.target.value = "";
     }
   };
 
@@ -205,23 +243,43 @@ function UploadPageContent() {
 
           <div
             className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-12 transition-all duration-500 ${
-              selectedFile
-                ? "border-red-500 bg-red-50/50"
-                : "border-red-900/20 bg-white/5 hover:border-red-500"
+              fileError
+                ? "border-red-400 bg-red-50/60"
+                : selectedFile
+                  ? "border-red-500 bg-red-50/50"
+                  : "border-red-900/20 bg-white/5 hover:border-red-500"
             }`}
             onClick={() =>
-              !inProgressStatuses.includes(uploadStatus) && fileInputRef.current?.click()
+              !inProgressStatuses.includes(uploadStatus) &&
+              !isValidating &&
+              fileInputRef.current?.click()
             }
             onDragOver={preventDefault}
             onDragEnter={preventDefault}
             onDrop={handleDrop}
           >
-            <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+            <input
+              type="file"
+              accept=".zip"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+            />
 
             <div
-              className={`mb-6 transition-transform duration-500 ${selectedFile ? "scale-110" : "group-hover:scale-110"}`}
+              className={`mb-6 transition-transform duration-500 ${
+                fileError
+                  ? ""
+                  : selectedFile
+                    ? "scale-110"
+                    : "group-hover:scale-110"
+              }`}
             >
-              {selectedFile ? (
+              {isValidating ? (
+                <Loader2 className="h-16 w-16 animate-spin text-red-400" strokeWidth={1} />
+              ) : fileError ? (
+                <AlertCircle className="h-16 w-16 text-red-400" strokeWidth={1} />
+              ) : selectedFile ? (
                 <FileText className="h-16 w-16 text-red-600" strokeWidth={1} />
               ) : (
                 <UploadCloud className="h-16 w-16 text-red-950/40" strokeWidth={1} />
@@ -229,11 +287,51 @@ function UploadPageContent() {
             </div>
 
             <p
-              className={`text-center font-mono text-xs tracking-widest ${selectedFile ? "font-bold text-red-900" : "text-zinc-400"}`}
+              className={`text-center font-mono text-xs tracking-widest ${
+                fileError
+                  ? "font-bold text-red-500"
+                  : selectedFile
+                    ? "font-bold text-red-900"
+                    : "text-zinc-400"
+              }`}
             >
-              {selectedFile ? selectedFile.name : "파일을 끌어오거나 클릭하여 선택"}
+              {isValidating
+                ? "파일 검사 중…"
+                : fileError
+                  ? "다른 파일을 선택해주세요"
+                  : selectedFile
+                    ? selectedFile.name
+                    : "ZIP 파일을 끌어오거나 클릭하여 선택"}
             </p>
+
+            {!isValidating && !fileError && !selectedFile && (
+              <p className="mt-2 font-mono text-[10px] text-zinc-400/70">
+                동영상 파일(.mp4, .avi, .mov 등)만 포함된 .zip
+              </p>
+            )}
           </div>
+
+          {/* 유효성 검사 오류 메시지 */}
+          {fileError && (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50/80 p-4">
+              <p className="flex items-start gap-2 text-sm font-semibold text-red-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {fileError}
+              </p>
+              {invalidFileList.length > 0 && (
+                <ul className="mt-2 space-y-0.5 pl-6">
+                  {invalidFileList.map((name) => (
+                    <li key={name} className="font-mono text-[11px] text-red-500">
+                      {name}
+                    </li>
+                  ))}
+                  {invalidFileList.length === 5 && (
+                    <li className="font-mono text-[11px] text-red-400">… 외 추가 파일</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
 
           <div className="mt-10 flex min-h-[80px] flex-col items-center">
             {uploadStatus === "idle" && selectedFile && (

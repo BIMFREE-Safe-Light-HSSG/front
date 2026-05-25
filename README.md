@@ -50,7 +50,8 @@
 * 업로드 화면
 
 ![upload Section](./public/upload.png)
-
+![upload Section](./public/upload2.png)
+동영상 파일을 내포한 zip파일만 업로드 가능
 * 뷰어 화면
 
 ![viewer Section](./public/viewer.png)
