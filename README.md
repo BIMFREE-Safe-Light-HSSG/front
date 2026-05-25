@@ -1,4 +1,4 @@
-# 3D HSSG 기반 세이프티 플랫폼
+# Super Safe Twin : 3D HSSG 기반 세이프티 플랫폼
 ### Data To Safety
 
 > 시설물 관리와 소방 대응의 패러다임 전환.  
@@ -35,6 +35,17 @@
 | `03F` | **Facility Management** | 3D 뷰어를 통해 건물 내부 설비를 입체적으로 관리합니다. |
 | `04F` | **Strategic Sharing** | 관제 데이터를 소방·재난 대응팀과 실시간 동기화합니다. |
 | `EVAC` | **Emergency Protocol** | 재난 발생 시 즉각적인 전술 모드(Tactical Mode)로 전환합니다. |
+* 회원가입 화면
+
+![signup Section](./public/signup.png)
+
+* 회원가입 화면 2 (시설관리자 - 관리 건물 선택 / 소방 및 재난 대응팀 - 관할 구역 선택)
+
+![signup Section](./public/signup2.png)
+
+* 로그인 화면
+
+![signup Section](./public/signin.png)
 
 * 업로드 화면
 
@@ -43,6 +54,20 @@
 * 뷰어 화면
 
 ![viewer Section](./public/viewer.png)
+
+* 시설 관리 화면
+
+![facility Section](./public/facility.png)
+
+* 화재 조회 화면
+
+![fire Section](./public/fire.png)
+
+
+* 최적 경로 탐색 화면
+
+![path Section](./public/path.png)
+
 
 <br>
 
@@ -76,8 +101,8 @@
 
 <br>
 
-**BIM-Free 정밀 구조화**
-> 무거운 BIM 데이터 없이도 2D 스캔 데이터만으로 객체 지향적 3D HSSG를 생성합니다.  
+**경량화된 정밀 구조**
+> 2D 스캔 데이터만으로 객체 지향적 3D HSSG를 생성합니다.  
 > 도입 비용을 획기적으로 절감하면서도 정밀도를 유지합니다.
 
 **실시간 전술 가시성**
@@ -100,37 +125,45 @@
 
 | 분류 | 기술 |
 |:---|:---|
-| Framework | Next.js 14+ (App Router), React |
-| Styling | Tailwind CSS, Shadcn/UI |
-| Animation | Framer Motion, Tailwind Keyframes |
-| Icons | Lucide React |
+| Framework | Next.js 16 (App Router), React 19, TypeScript 5 |
+| 3D 렌더링 | Three.js 0.183, @react-three/fiber 9.5 |
+| UI | Radix UI, Tailwind CSS v4, shadcn/ui |
+| 폼 & 유효성 검사 | React Hook Form, Zod |
+| 애니메이션 | Framer Motion |
+| 아이콘 | Lucide React |
 | HTTP | Axios |
+| 패키지 매니저 | pnpm |
 
 <br>
 
 ### 핵심 구현 상세
 
-#### 1. Liquid Glass 시각화 — SVG Refraction
+#### 1. 3D 씬 그래프 렌더링 — Three.js + React Three Fiber
 
-배경의 유동적인 액체 질감과 유리 카드의 굴절 효과를 위해 SVG 필터를 동적으로 적용합니다.
+`lib/scene-graph-skeleton/`에서 파싱된 HSSG 데이터를 `@react-three/fiber` 기반 캔버스에 렌더링합니다.  
+건물의 구조적 자산(벽·천장·바닥·설비)을 각각 독립 Mesh로 분리하여 선택·하이라이트·툴팁을 지원합니다.
 
-```xml
-<filter id="liquid-refraction">
-  <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
-  <feDisplacementMap in="SourceGraphic" in2="noise" scale="25" />
-</filter>
+```
+BuildingSceneCanvas        # R3F Canvas 진입점
+├── SceneCameraController  # 카메라 뷰 전환 (평면도 / 투시)
+├── StructuralAssetMesh    # 구조 자산 Mesh (선택 이벤트 처리)
+├── PlacementSurface       # 자산 배치 평면
+├── AssetSpot              # 설비 위치 마커
+├── FireIncidentMarker     # 화재 발생 위치 표시
+└── AssetHoverTooltip      # 자산 호버 툴팁
 ```
 
 <br>
 
-#### 2. 전술 상태 관리 — Tactical State
+#### 2. 비상 대응 모드 — Emergency Protocol
 
-`isEmergency` 상태 변수를 통해 플랫폼 전체 테마를 즉각 전환합니다.
+`emergency-workspace-view.tsx`에서 화재 발생 시 전술 모드로 즉시 전환합니다.  
+`ViewerFireIncidentsPanel`과 실시간 알림(`emergency-fire-notifications.tsx`)이 연동됩니다.
 
-| Mode | 배경 | 포인트 컬러 |
-|:---|:---|:---|
-| Normal | `#fffafa` | 레드 / 챠콜 (안정적 시설 관리) |
-| Emergency | `#ffebeb` | 발광 레드 + 애니메이션 가속 |
+| Mode | 설명 |
+|:---|:---|
+| Normal | 시설 관리 모드 — 설비 점검 이력 및 자산 검색 |
+| Emergency | 전술 모드 — 화재 위치 마커 + 실시간 사고 목록 활성화 |
 
 <br>
 
@@ -139,45 +172,110 @@
 **3-1. 인증 (Authentication)**
 
 ```
+POST /auth/signup   # 시설관리자: { email, password, name, job: "FACILITY_MANAGER" }
+                    # 소방대원:   { email, password, name, job: "FIREFIGHTER", jurisdiction: { code, name } }
 POST /auth/login    { email, password }
-POST /auth/signup   { email, password, name }
+GET  /auth/me
 ```
 
-**3-2. 파일 업로드 — 2단계 방식**
+**3-2. 건물 조회 및 씬 그래프**
+
+```
+GET  /buildings                              # 역할별 자동 필터링
+GET  /buildings/{building_id}/scene-graph    # 최신 HSSG JSON 조회
+POST /facility/buildings                     # 시설관리자 전용 건물 등록
+```
+
+**3-3. 파일 업로드 — 3단계 방식**
 
 대용량 파일 전송 최적화를 위해 Presigned URL 방식을 사용합니다.
 
 ```
 # Step 1 — URL 발급
-POST /data_transform/upload
+POST /data-transforms/upload
 Authorization: Bearer {token}
-Body: { filename, content_type, building_id }
-→ 반환: upload_url
+Body: { building_id, filename, content_type }
+→ 반환: { task_id, upload_url }
 
-# Step 2 — 직접 전송
+# Step 2 — MinIO 직접 전송
 PUT {upload_url}
 Body: <file binary>
+
+# Step 3 — 업로드 완료 신호 & 변환 시작
+POST /data-transforms/{task_id}/complete-upload
+→ 백그라운드 변환 시작 (202 Accepted)
+
+# Step 4 — 변환 상태 polling
+GET /data-transforms/{task_id}
+→ { status: "PROCESSING" | "COMPLETED" | "FAILED", progress_percent }
 ```
 
-**3-3. 공통 설정**
+**3-4. 공통 설정**
 
 | 항목 | 값 |
 |:---|:---|
-| Base URL | `NEXT_PUBLIC_API_URL` (환경 변수) |
-| 인증 방식 | Bearer Token (모든 보안 경로 자동 포함) |
-| HTTP 클라이언트 | Axios |
+| Base URL | `https://supersafetwin-backend.duckdns.org` (`NEXT_PUBLIC_API_URL`) |
+| 인증 방식 | Bearer Token (모든 보호 경로 자동 포함) |
+| HTTP 클라이언트 | Axios (`lib/api/client.ts`) |
 
 <br>
 
 #### 4. 프로젝트 디렉토리 구조
 
 ```
-/
-├── hero-section      # Liquid Glass 배경 및 플랫폼 정체성 랜딩 영역
-├── features-section  # 5단계 워크플로우 수직 로드맵
-├── navigation        # 스크롤·상태 연동 지능형 네비게이션
-├── upload            # 데이터 유입 인터페이스
-└── viewer            # 3D 관제 인터페이스
+front/
+├── app/                          # Next.js App Router 페이지
+│   ├── page.tsx                  # 홈
+│   ├── layout.tsx
+│   ├── sign-in/                  # 로그인
+│   ├── sign-up/                  # 회원가입
+│   ├── upload/                   # 2D 스캔 데이터 업로드
+│   ├── viewer/                   # 3D HSSG 뷰어
+│   ├── facility/                 # 시설 목록 관리
+│   ├── emergency/                # 비상·화재 대응
+│   ├── my-page/                  # 마이페이지
+│   └── api/                      # API 클라이언트 모듈
+│       ├── auth.ts
+│       ├── upload.ts
+│       ├── viewer.ts
+│       └── fire-incidents.ts
+│
+├── components/
+│   ├── facility-building-viewer/ # Three.js 3D 뷰어 컴포넌트
+│   │   ├── BuildingSceneCanvas.tsx
+│   │   ├── StructuralAssetMesh.tsx
+│   │   ├── AssetDetailPanel.tsx
+│   │   ├── FireIncidentMarker.tsx
+│   │   ├── ViewerSearchPanel.tsx
+│   │   ├── ViewerInspectionHistoryPanel.tsx
+│   │   └── ...
+│   ├── facility/                 # 시설 목록·빌딩 관리 UI
+│   ├── sign-up/                  # 멀티스텝 회원가입 플로우
+│   ├── emergency-workspace-view.tsx
+│   ├── emergency-fire-notifications.tsx
+│   └── ui/                       # shadcn/ui 기본 컴포넌트
+│
+├── lib/
+│   ├── scene-graph-skeleton/     # HSSG 핵심 파싱·연산 로직
+│   │   ├── types.ts              # 씬 그래프 타입 정의
+│   │   ├── assets.ts             # 자산 목록 추출
+│   │   ├── structural-assets.ts  # 구조 자산(벽·천장·바닥) 처리
+│   │   ├── zone-geometry.ts      # 공간 기하학 연산
+│   │   ├── wall-orientation.ts   # 벽 방향 분류
+│   │   ├── camera-views.ts       # 카메라 프리셋 뷰
+│   │   ├── coordinates.ts        # 좌표 변환
+│   │   ├── inspection-history.ts # 점검 이력
+│   │   └── search.ts             # 자산 검색
+│   ├── fire-incidents/           # 화재 사고 데이터 레이어
+│   ├── facility/                 # 빌딩 목록 API 연동
+│   ├── api/client.ts             # Axios 인스턴스
+│   ├── auth/storage.ts           # 인증 토큰 스토리지
+│   └── utils.ts
+│
+└── hooks/
+    ├── use-facility-buildings.ts # 빌딩 목록 훅
+    ├── use-require-job.ts        # 직종 인증 가드
+    └── use-toast.ts
 ```
 
 <br>
@@ -186,6 +284,6 @@ Body: <file binary>
 
 <div align="center">
 
-© 2026 SafeHSSG Project. All Rights Reserved.
+© 2026 Super Safe Twin. All Rights Reserved.
 
 </div>
