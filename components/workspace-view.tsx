@@ -257,7 +257,7 @@ export default function WorkspaceView() {
           </div>
           <div>
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
-              BIMFree
+              SuperSafeTwin
             </p>
             <p className="text-xs text-zinc-500">Home</p>
           </div>

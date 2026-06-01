@@ -1,10 +1,15 @@
 import type { FireIncident } from "@/lib/fire-incidents/types";
 import type { Vec3 } from "@/lib/scene-graph-skeleton/types";
 
-const STORAGE_PREFIX = "bimfree-fire-incidents:";
+const STORAGE_PREFIX = "supersafetwin-fire-incidents:";
+const LEGACY_STORAGE_PREFIX = "bimfree-fire-incidents:";
 
 function storageKey(buildingId: string) {
   return `${STORAGE_PREFIX}${buildingId}`;
+}
+
+function legacyStorageKey(buildingId: string) {
+  return `${LEGACY_STORAGE_PREFIX}${buildingId}`;
 }
 
 function isVec3(value: unknown): value is Vec3 {
@@ -96,7 +101,9 @@ export function loadFireIncidents(buildingId: string): FireIncident[] {
   if (typeof window === "undefined" || !buildingId) return [];
 
   try {
-    const raw = localStorage.getItem(storageKey(buildingId));
+    const raw =
+      localStorage.getItem(storageKey(buildingId)) ??
+      localStorage.getItem(legacyStorageKey(buildingId));
     if (!raw) return [];
 
     const parsed = JSON.parse(raw) as unknown;
@@ -108,7 +115,7 @@ export function loadFireIncidents(buildingId: string): FireIncident[] {
   }
 }
 
-export const FIRE_INCIDENTS_CHANGED_EVENT = "bimfree-fire-incidents-changed";
+export const FIRE_INCIDENTS_CHANGED_EVENT = "supersafetwin-fire-incidents-changed";
 
 export function saveFireIncidents(buildingId: string, incidents: FireIncident[]): void {
   if (typeof window === "undefined" || !buildingId) return;

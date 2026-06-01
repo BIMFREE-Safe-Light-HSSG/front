@@ -48,7 +48,7 @@ export default function SignInPage() {
       <div className="w-full max-w-sm space-y-8">
         <div className="space-y-2">
           <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
-            <span className="font-display text-xl tracking-tight">BIMFree</span>
+            <span className="font-display text-xl tracking-tight">SuperSafeTwin</span>
             <span className="text-muted-foreground font-mono text-[10px] mt-0.5">HOME</span>
           </Link>
           <h1 className="text-2xl font-display tracking-tight">Welcome back</h1>

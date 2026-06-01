@@ -16,7 +16,7 @@ export const DEMO_FACILITY_BUILDING_ID_2 = "demo-bld-002";
 
 
 
-const DEFAULT_DEMO_EMAILS = ["demo@bimfree.local"] as const;
+const DEFAULT_DEMO_EMAILS = ["demo@supersafetwin.local"] as const;
 
 
 

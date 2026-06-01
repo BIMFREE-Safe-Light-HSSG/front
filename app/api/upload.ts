@@ -28,6 +28,13 @@ export type DataTransformTaskResponse = {
   error_message: string | null;
 };
 
+export type DevSceneGraphResponse = {
+  graph_data_id: string;
+  building_id: string;
+  created_at: string;
+  scene_graph: unknown;
+};
+
 /** POST /data-transforms/upload */
 export const requestUploadUrl = async ({
   accessToken,
@@ -77,6 +84,30 @@ export const uploadFileToPresignedUrl = async ({
   if (!response.ok) {
     throw new Error("MinIO 파일 업로드에 실패했습니다.");
   }
+};
+
+/** PUT /dev/buildings/{building_id}/scene-graph */
+export const replaceDevBuildingSceneGraph = async ({
+  accessToken,
+  buildingId,
+  sceneGraph,
+}: {
+  accessToken?: string | null;
+  buildingId: string;
+  sceneGraph: unknown;
+}): Promise<DevSceneGraphResponse> => {
+  const response = await axios.put<DevSceneGraphResponse>(
+    apiUrl(`/dev/buildings/${buildingId}/scene-graph`),
+    { scene_graph: sceneGraph },
+    {
+      headers: {
+        ...(accessToken ? authHeaders(accessToken) : {}),
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return response.data;
 };
 
 /** POST /data-transforms/{task_id}/complete-upload — 202 Accepted */

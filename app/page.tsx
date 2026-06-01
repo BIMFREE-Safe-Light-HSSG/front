@@ -119,7 +119,7 @@ export default function Home() {
         <div className="absolute bottom-[6%] left-[28%] h-[420px] w-[420px] rounded-full bg-red-200/20 blur-3xl" />
       </div>
 
-      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
+      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-7xl flex-col">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-950 text-white shadow-lg">
@@ -127,7 +127,7 @@ export default function Home() {
             </div>
             <div>
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
-                BIMFree
+                SuperSafeTwin
               </p>
               <p className="text-sm text-zinc-500">Data To Safety</p>
             </div>
@@ -156,11 +156,11 @@ export default function Home() {
           ) : null}
         </header>
 
-        <div className="grid flex-1 items-center gap-10 py-16 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid flex-1 items-center gap-10 py-16 lg:grid-cols-[minmax(0,1fr)_minmax(480px,0.95fr)] xl:grid-cols-[minmax(0,1fr)_minmax(600px,0.9fr)]">
           <div>
             <div className="mb-8 inline-flex items-center gap-3 border-l-4 border-red-900 pl-5">
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.45em] text-red-900/40">
-                {user ? "Workspace Gateway" : "BIM-Free Safety Platform"}
+                {user ? "Workspace Gateway" : "SuperSafeTwin Safety Platform"}
               </span>
             </div>
 
@@ -172,7 +172,7 @@ export default function Home() {
 
             <p className="mt-8 max-w-2xl text-lg leading-8 text-zinc-600">
               {user
-                ? `${user.name ?? user.email}님, ${isFacilityManager ? "시설관리 업무를 시작하세요." : "관할 지구 건물 정보를 확인하세요."}`
+                ? `${user.name ?? user.email}님, ${isFacilityManager ? "시설관리 업무를 시작하세요." : "관할 지역의 건물 정보를 확인하세요."}`
                 : "다중이용시설과 대형 건축물의 안전 정보를 디지털 트윈으로 시각화해, 시설 관리자가 점검 이력과 위험 요소를 한곳에서 관리할 수 있게 합니다. 화재 시에는 구조대원이 건물 구조와 위험 구역, 대피 가능 동선을 빠르게 파악해 구조 경로를 판단하도록 돕습니다."}
             </p>
 
@@ -207,13 +207,13 @@ export default function Home() {
                       href="/facility"
                       icon={<Database className="h-5 w-5" />}
                       title="시설관리 페이지"
-                      description="관리 건물 목록과 scene graph를 확인합니다."
+                      description="건물 내부를 시각화하고 시설 관리 기능들을 이용가능합니다."
                     />
                     <ActionCard
                       href="/upload"
                       icon={<UploadCloud className="h-5 w-5" />}
                       title="스캔 업로드"
-                      description="본인 소유 건물의 스캔 파일을 업로드하고 변환을 요청합니다."
+                      description="건물의 스캔 파일을 업로드하고 변환을 요청합니다."
                     />
                   </>
                 ) : (
@@ -223,7 +223,7 @@ export default function Home() {
                       href="/emergency"
                       icon={<ShieldCheck className="h-5 w-5" />}
                       title="건물 정보 조회"
-                      description="관할 지구 내 건물 목록과 scene graph를 확인합니다."
+                      description="관할 내 건물 목록과 내부 구조를 확인가능합니다."
                     />
                   </>
                 )
@@ -232,12 +232,12 @@ export default function Home() {
                   <InfoCard
                     icon={<Building2 className="h-5 w-5" />}
                     title="시설관리자"
-                    description="건물 위치 등록, 스캔 업로드, scene graph 조회를 수행합니다."
+                    description="건물 등록, 스캔 업로드, 건물 내부 시각화 등을 이용하실 수 있습니다."
                   />
                   <InfoCard
                     icon={<ShieldCheck className="h-5 w-5" />}
                     title="소방대원"
-                    description="관할 지구 기반으로 접근 가능한 건물 정보를 조회합니다."
+                    description="관할 지역의 건물 정보를 조회, 구조 경로 탐색 등을 이용하실 수 있습니다."
                   />
                 </>
               )}

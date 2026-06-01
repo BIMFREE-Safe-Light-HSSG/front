@@ -8,7 +8,8 @@ import { getDemoSceneGraph, isDemoBuildingId } from "@/lib/facility-demo/seed";
 import { parseFireIncidentsFromSceneGraph } from "@/lib/fire-incidents/storage";
 import type { FireIncident, FireSeverity } from "@/lib/fire-incidents/types";
 
-const READ_STORAGE_PREFIX = "bimfree-fire-notification-reads:";
+const READ_STORAGE_PREFIX = "supersafetwin-fire-notification-reads:";
+const LEGACY_READ_STORAGE_PREFIX = "bimfree-fire-notification-reads:";
 
 const SEVERITY_LABEL: Record<FireSeverity, string> = {
   high: "높음",
@@ -26,11 +27,17 @@ function readStorageKey(scope: string) {
   return `${READ_STORAGE_PREFIX}${scope}`;
 }
 
+function legacyReadStorageKey(scope: string) {
+  return `${LEGACY_READ_STORAGE_PREFIX}${scope}`;
+}
+
 function loadReadMap(scope: string): Record<string, string> {
   if (typeof window === "undefined") return {};
 
   try {
-    const raw = localStorage.getItem(readStorageKey(scope));
+    const raw =
+      localStorage.getItem(readStorageKey(scope)) ??
+      localStorage.getItem(legacyReadStorageKey(scope));
     if (!raw) return {};
 
     const parsed = JSON.parse(raw) as unknown;

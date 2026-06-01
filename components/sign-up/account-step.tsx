@@ -38,7 +38,7 @@ export function AccountStep({
     <div className="space-y-8">
       <div className="space-y-2">
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-red-800/50">
-          Step 1 · 계정
+          계정 생성
         </p>
         <h1 className="font-display text-3xl tracking-tight text-zinc-900">회원가입</h1>
       </div>
@@ -80,7 +80,7 @@ export function AccountStep({
             )}
           />
           <p className="text-sm font-bold text-zinc-900">소방대원</p>
-          <p className="mt-1 text-xs text-zinc-500">관할 지구 건물 · 화재 알림</p>
+          <p className="mt-1 text-xs text-zinc-500">관할 건물 조회 · 화재 알림</p>
         </button>
       </div>
 

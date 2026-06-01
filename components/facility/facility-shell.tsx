@@ -41,7 +41,7 @@ export function FacilityShell({
             </div>
             <div>
               <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
-                BIMFree
+                SuperSafeTwin
               </p>
               <p className="text-sm text-zinc-500">{eyebrow}</p>
             </div>

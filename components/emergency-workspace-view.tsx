@@ -307,7 +307,7 @@ export default function EmergencyWorkspaceView() {
           </div>
           <div>
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
-              BIMFree
+              SuperSafeTwin
             </p>
             <p className="text-xs text-zinc-500">Home</p>
           </div>
@@ -328,7 +328,7 @@ export default function EmergencyWorkspaceView() {
               <p className="mt-3 text-sm text-zinc-600">관할: {user.jurisdiction.name}</p>
             ) : null}
             <p className="mt-2 max-w-xl text-sm text-zinc-500">
-              3D Scene Graph는 열람할 수 있습니다. 점검 이력·관리 기록·스캔 업로드는 시설관리자 전용입니다.
+              건물 구조를 살피고 구조 경로를 탐색할 수 있습니다.
             </p>
           </div>
         </header>
@@ -378,43 +378,41 @@ export default function EmergencyWorkspaceView() {
                   sortedBuildings.map((building) => {
                     const fireCount = getBuildingActiveFireCount(building);
                     return (
-                    <button
-                      key={building.id}
-                      type="button"
-                      onClick={() => handleSelectBuilding(building.id)}
-                      className={`w-full rounded-xl border p-4 text-left transition-all ${
-                        selectedBuildingId === building.id
-                          ? "border-red-900/40 bg-white/60 shadow-sm"
-                          : fireCount > 0
-                            ? "border-red-500/35 bg-red-50/40 hover:bg-red-50/60"
-                            : "border-red-900/10 bg-white/20 hover:bg-white/40"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <Building2 className="mt-0.5 h-4 w-4 text-red-900/50" />
-                        <div className="flex flex-wrap items-center justify-end gap-1">
-                          {fireCount > 0 ? (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-red-600 px-2 py-1 font-mono text-[9px] font-bold text-white">
-                              <Flame className="h-2.5 w-2.5" />
-                              화재 {fireCount}
+                      <button
+                        key={building.id}
+                        type="button"
+                        onClick={() => handleSelectBuilding(building.id)}
+                        className={`w-full rounded-xl border p-4 text-left transition-all ${selectedBuildingId === building.id
+                            ? "border-red-900/40 bg-white/60 shadow-sm"
+                            : fireCount > 0
+                              ? "border-red-500/35 bg-red-50/40 hover:bg-red-50/60"
+                              : "border-red-900/10 bg-white/20 hover:bg-white/40"
+                          }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <Building2 className="mt-0.5 h-4 w-4 text-red-900/50" />
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            {fireCount > 0 ? (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-600 px-2 py-1 font-mono text-[9px] font-bold text-white">
+                                <Flame className="h-2.5 w-2.5" />
+                                화재 {fireCount}
+                              </span>
+                            ) : null}
+                            <span
+                              className={`rounded-full px-2 py-1 font-mono text-[9px] ${building.has_scene_graph
+                                  ? "bg-red-950 text-white"
+                                  : "bg-red-900/10 text-red-900/50"
+                                }`}
+                            >
+                              {building.has_scene_graph ? "GRAPH" : "EMPTY"}
                             </span>
-                          ) : null}
-                          <span
-                            className={`rounded-full px-2 py-1 font-mono text-[9px] ${
-                              building.has_scene_graph
-                                ? "bg-red-950 text-white"
-                                : "bg-red-900/10 text-red-900/50"
-                            }`}
-                          >
-                            {building.has_scene_graph ? "GRAPH" : "EMPTY"}
-                          </span>
+                          </div>
                         </div>
-                      </div>
-                      <p className="mt-3 text-sm font-bold text-zinc-900">{building.name}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
-                        {building.address ?? "주소 정보 없음"}
-                      </p>
-                    </button>
+                        <p className="mt-3 text-sm font-bold text-zinc-900">{building.name}</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
+                          {building.address ?? "주소 정보 없음"}
+                        </p>
+                      </button>
                     );
                   })
                 )}
