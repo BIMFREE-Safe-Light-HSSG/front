@@ -1,6 +1,7 @@
 "use client"; // 1. 클라이언트 컴포넌트 선언 (이벤트 처리를 위해 필수)
 
 import { useState } from "react"; // 2. 상태 관리를 위한 import
+import Link from "next/link";
 import { useRouter } from "next/navigation"; // 로그인 성공 후 이동을 위한 import
 import { signin } from "@/app/api/auth";
 import { Button } from "@/components/ui/button";
@@ -46,10 +47,10 @@ export default function SignInPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="space-y-2">
-          <a href="/" className="inline-flex items-center gap-2 mb-8 group">
-            <span className="font-display text-xl tracking-tight">BIMFree</span>
+          <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
+            <span className="font-display text-xl tracking-tight">SuperSafeTwin</span>
             <span className="text-muted-foreground font-mono text-[10px] mt-0.5">HOME</span>
-          </a>
+          </Link>
           <h1 className="text-2xl font-display tracking-tight">Welcome back</h1>
           <p className="text-sm text-muted-foreground">Sign in to your account to continue.</p>
         </div>
@@ -99,9 +100,9 @@ export default function SignInPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <a href="/sign-up" className="text-foreground underline underline-offset-4 hover:text-foreground/80 transition-colors">
+          <Link href="/sign-up" className="text-foreground underline underline-offset-4 hover:text-foreground/80 transition-colors">
             Sign up
-          </a>
+          </Link>
         </p>
       </div>
     </div>

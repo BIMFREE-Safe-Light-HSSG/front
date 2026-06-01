@@ -3,10 +3,16 @@
 import {
   completeDataUpload,
   pollDataTransformTask,
+  replaceDevBuildingSceneGraph,
   requestUploadUrl,
   uploadFileToPresignedUrl,
 } from "@/app/api/upload";
-import { isAcceptedArchive, validateZipContents } from "@/lib/upload/validate";
+import {
+  isAcceptedArchive,
+  readSceneGraphJsonFromZip,
+  validateZipContents,
+  type AcceptedZipKind,
+} from "@/lib/upload/validate";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -37,6 +43,7 @@ const inProgressStatuses: UploadStatus[] = [
   "requestingUploadUrl",
   "uploadingFile",
   "completingUpload",
+  "polling",
 ];
 
 const getUploadErrorMessage = (error: unknown) => {
@@ -48,6 +55,10 @@ const getUploadErrorMessage = (error: unknown) => {
 
   if (status) {
     return `업로드 처리 중 서버 오류가 발생했습니다. 상태 코드: ${status}`;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
 
   return "업로드 중 오류가 발생했습니다.";
@@ -66,6 +77,7 @@ function UploadPageContent() {
   } = useFacilityBuildings();
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedZipKind, setSelectedZipKind] = useState<AcceptedZipKind | null>(null);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [isEmergency, setIsEmergency] = useState(false);
@@ -87,13 +99,14 @@ function UploadPageContent() {
 
   /**
    * 파일 선택 공통 핸들러
-   * 1) ZIP 여부 확인 → 2) ZIP 내부 동영상 전용 검사
+   * 1) ZIP 여부 확인 → 2) 동영상 ZIP 또는 scene graph JSON ZIP 검사
    */
   const handleFileSelect = async (file: File) => {
     // 이전 상태 초기화
     setFileError(null);
     setInvalidFileList([]);
     setSelectedFile(null);
+    setSelectedZipKind(null);
 
     // ① ZIP 파일인지 확인
     if (!isAcceptedArchive(file)) {
@@ -112,6 +125,7 @@ function UploadPageContent() {
       }
       // 검사 통과 → 파일 등록
       setSelectedFile(file);
+      setSelectedZipKind(result.kind);
       setUploadStatus("idle");
       setProgress(0);
       setIsEmergency(false);
@@ -150,10 +164,32 @@ function UploadPageContent() {
       return;
     }
 
-    setUploadStatus("requestingUploadUrl");
-    setProgress(15);
-
     try {
+      if (selectedZipKind === "sceneGraphJson") {
+        setUploadStatus("requestingUploadUrl");
+        setProgress(15);
+
+        const sceneGraph = await readSceneGraphJsonFromZip(selectedFile);
+
+        setProgress(40);
+        setUploadStatus("uploadingFile");
+        setProgress(80);
+        setUploadStatus("completingUpload");
+
+        await replaceDevBuildingSceneGraph({
+          accessToken: token,
+          buildingId: selectedBuildingId,
+          sceneGraph,
+        });
+
+        setProgress(100);
+        setUploadStatus("success");
+        return;
+      }
+
+      setUploadStatus("requestingUploadUrl");
+      setProgress(15);
+
       const uploadConfig = await requestUploadUrl({
         accessToken: token,
         file: selectedFile,
@@ -213,9 +249,8 @@ function UploadPageContent() {
         </div>
 
         <div
-          className={`lg:col-span-8 rounded-[2rem] border border-white/60 bg-white/30 p-6 shadow-2xl transition-colors sm:p-8 ${
-            isEmergency ? "ring-2 ring-red-500/30" : ""
-          }`}
+          className={`lg:col-span-8 rounded-[2rem] border border-white/60 bg-white/30 p-6 shadow-2xl transition-colors sm:p-8 ${isEmergency ? "ring-2 ring-red-500/30" : ""
+            }`}
           style={{ backdropFilter: "blur(20px)" }}
           onDragOver={preventDefault}
           onDrop={preventDefault}
@@ -242,13 +277,12 @@ function UploadPageContent() {
           </div>
 
           <div
-            className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-12 transition-all duration-500 ${
-              fileError
+            className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed p-12 transition-all duration-500 ${fileError
                 ? "border-red-400 bg-red-50/60"
                 : selectedFile
                   ? "border-red-500 bg-red-50/50"
                   : "border-red-900/20 bg-white/5 hover:border-red-500"
-            }`}
+              }`}
             onClick={() =>
               !inProgressStatuses.includes(uploadStatus) &&
               !isValidating &&
@@ -267,13 +301,12 @@ function UploadPageContent() {
             />
 
             <div
-              className={`mb-6 transition-transform duration-500 ${
-                fileError
+              className={`mb-6 transition-transform duration-500 ${fileError
                   ? ""
                   : selectedFile
                     ? "scale-110"
                     : "group-hover:scale-110"
-              }`}
+                }`}
             >
               {isValidating ? (
                 <Loader2 className="h-16 w-16 animate-spin text-red-400" strokeWidth={1} />
@@ -287,13 +320,12 @@ function UploadPageContent() {
             </div>
 
             <p
-              className={`text-center font-mono text-xs tracking-widest ${
-                fileError
+              className={`text-center font-mono text-xs tracking-widest ${fileError
                   ? "font-bold text-red-500"
                   : selectedFile
                     ? "font-bold text-red-900"
                     : "text-zinc-400"
-              }`}
+                }`}
             >
               {isValidating
                 ? "파일 검사 중…"
@@ -353,6 +385,7 @@ function UploadPageContent() {
                     {uploadStatus === "requestingUploadUrl" && "업로드 URL 요청 중…"}
                     {uploadStatus === "uploadingFile" && "파일 업로드 중…"}
                     {uploadStatus === "completingUpload" && "변환 요청 중…"}
+                    {uploadStatus === "polling" && "변환 상태 확인 중…"}
                   </span>
                   <span className="font-mono text-xs font-bold text-red-900">{progress}%</span>
                 </div>
@@ -377,6 +410,7 @@ function UploadPageContent() {
                   type="button"
                   onClick={() => {
                     setSelectedFile(null);
+                    setSelectedZipKind(null);
                     setUploadStatus("idle");
                     setIsEmergency(false);
                     setProgress(0);

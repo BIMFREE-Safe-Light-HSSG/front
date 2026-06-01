@@ -38,6 +38,7 @@ import {
 } from "@/lib/facility-demo/seed";
 import { formatViewerDateTime } from "@/lib/format/datetime";
 import { getAxiosErrorStatus, handleUnauthorized } from "@/lib/http/errors";
+import { parseFireIncidentsFromSceneGraph } from "@/lib/fire-incidents/storage";
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
 
 const formatCoordinate = (value: number | null | undefined, suffix: "N" | "E") => {
@@ -256,7 +257,7 @@ export default function WorkspaceView() {
           </div>
           <div>
             <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-red-900/50">
-              BIMFree
+              SuperSafeTwin
             </p>
             <p className="text-xs text-zinc-500">Home</p>
           </div>
@@ -311,6 +312,21 @@ export default function WorkspaceView() {
               districtName={selectedBuilding?.district_name}
               enableFacilityTools
               isEmergency={isEmergency}
+              onSceneGraphChange={(next) => {
+                setSceneGraph(next);
+                setBuildings((current) =>
+                  current.map((building) =>
+                    building.id === next.building_id
+                      ? {
+                          ...building,
+                          has_scene_graph: true,
+                          latest_graph_created_at: next.created_at,
+                          active_fire_count: parseFireIncidentsFromSceneGraph(next.scene_graph).length,
+                        }
+                      : building,
+                  ),
+                );
+              }}
               onFireIncidentsChange={bumpFireListRevision}
             />
           </div>

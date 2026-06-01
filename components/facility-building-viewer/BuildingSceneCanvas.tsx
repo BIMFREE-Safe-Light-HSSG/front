@@ -52,6 +52,7 @@ export type BuildingSceneCanvasProps = {
   onHoverAsset: (id: string | null) => void;
   onClearSelection: () => void;
   onPlacementPick: (position: Vec3) => void;
+  onContextPick?: (target: SceneContextTarget) => void;
   searchHighlightActive: boolean;
   highlightZoneIds: ReadonlySet<string>;
   highlightAssetIds: ReadonlySet<string>;
@@ -62,6 +63,17 @@ export type BuildingSceneCanvasProps = {
   /** 소방 뷰: 구역 단일색 + 화재 구역만 붉게 */
   firefighterZoneView?: boolean;
   fireZoneIds?: ReadonlySet<string>;
+};
+
+export type SceneContextTarget = {
+  position: Vec3;
+  clientX: number;
+  clientY: number;
+  zoneId?: string;
+  zoneName?: string;
+  assetId?: string;
+  assetClass?: string;
+  fireId?: string;
 };
 
 function disableRaycast(mesh: THREE.Mesh | null) {
@@ -80,6 +92,7 @@ function ZonePanel({
   isFireZone,
   onSelect,
   onPlacementPick,
+  onContextPick,
 }: {
   zone: ZoneNode;
   index: number;
@@ -92,6 +105,7 @@ function ZonePanel({
   isFireZone: boolean;
   onSelect: (id: string) => void;
   onPlacementPick: (position: Vec3) => void;
+  onContextPick?: (target: SceneContextTarget) => void;
 }) {
   const fillRef = useRef<THREE.Mesh>(null);
   const color = firefighterZoneView
@@ -257,6 +271,17 @@ function ZonePanel({
       }
       onSelect(zone.id);
     },
+    onContextMenu: (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      e.nativeEvent.preventDefault();
+      onContextPick?.({
+        position: threePointToSkeleton(e.point.x, e.point.y, e.point.z),
+        clientX: e.nativeEvent.clientX,
+        clientY: e.nativeEvent.clientY,
+        zoneId: zone.id,
+        zoneName: zone.name,
+      });
+    },
     onPointerOver: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
       document.body.style.cursor = placementMode ? "crosshair" : "pointer";
@@ -314,6 +339,7 @@ function SceneContent({
   onSelectAsset,
   onHoverAsset,
   onPlacementPick,
+  onContextPick,
   searchHighlightActive,
   highlightZoneIds,
   highlightAssetIds,
@@ -394,6 +420,7 @@ function SceneContent({
                 isFireZone={isFireZone}
                 onSelect={(id) => onSelectZone(id)}
                 onPlacementPick={onPlacementPick}
+                onContextPick={onContextPick}
               />
             );
           })}
@@ -415,6 +442,7 @@ function SceneContent({
                 dimmed={aDimmed}
                 onSelect={onSelectAsset}
                 onHover={onHoverAsset}
+                onContextPick={onContextPick}
               />
             );
           })}
@@ -453,7 +481,8 @@ function SceneContent({
               incident={incident}
               selected={selectedFireId === incident.id}
               interactive={Boolean(onSelectFire)}
-              onSelect={(id) => onSelectFire?.(id)}
+          onSelect={(id) => onSelectFire?.(id)}
+          onContextPick={onContextPick}
             />
           ))}
         </group>

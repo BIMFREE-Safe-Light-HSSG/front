@@ -14,8 +14,10 @@ const VIDEO_EXTENSIONS = new Set([
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
+export type AcceptedZipKind = "video" | "sceneGraphJson";
+
 export type ZipValidationResult =
-  | { valid: true; fileCount: number }
+  | { valid: true; fileCount: number; kind: AcceptedZipKind; jsonEntryName?: string }
   | { valid: false; reason: string; invalidFiles?: string[] };
 
 // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -40,6 +42,34 @@ function isMetaEntry(filename: string): boolean {
 /** 동영상 파일 확장자인지 확인 */
 function isVideoFile(filename: string): boolean {
   return VIDEO_EXTENSIONS.has(getExtension(filename));
+}
+
+/** Scene graph JSON 파일 확장자인지 확인 */
+function isJsonFile(filename: string): boolean {
+  return getExtension(filename) === "json";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function looksLikeSceneGraph(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    Array.isArray(value.nodes) ||
+    Array.isArray(value.edges) ||
+    isRecord(value.assets) ||
+    isRecord(value.overlays) ||
+    typeof value.version === "string"
+  );
+}
+
+export function toSceneGraphPayload(json: unknown): unknown {
+  if (isRecord(json) && looksLikeSceneGraph(json.scene_graph)) {
+    return json.scene_graph;
+  }
+
+  return json;
 }
 
 // ─── 공개 API ─────────────────────────────────────────────────────────────────
@@ -81,6 +111,34 @@ export async function validateZipContents(
     return { valid: false, reason: "압축 파일 안에 파일이 없습니다." };
   }
 
+  if (entries.length === 1 && isJsonFile(entries[0].name)) {
+    try {
+      const json = JSON.parse(await entries[0].async("text")) as unknown;
+      const sceneGraph = toSceneGraphPayload(json);
+
+      if (!looksLikeSceneGraph(sceneGraph)) {
+        return {
+          valid: false,
+          reason: "압축 파일 안에 동영상 파일(.mp4, .avi, .mov 등)만 포함되어야 합니다.",
+          invalidFiles: [entries[0].name],
+        };
+      }
+
+      return {
+        valid: true,
+        fileCount: 1,
+        kind: "sceneGraphJson",
+        jsonEntryName: entries[0].name,
+      };
+    } catch {
+      return {
+        valid: false,
+        reason: "압축 파일 안에 동영상 파일(.mp4, .avi, .mov 등)만 포함되어야 합니다.",
+        invalidFiles: [entries[0].name],
+      };
+    }
+  }
+
   const invalidFiles = entries
     .filter((entry) => !isVideoFile(entry.name))
     .map((entry) => entry.name);
@@ -88,10 +146,24 @@ export async function validateZipContents(
   if (invalidFiles.length > 0) {
     return {
       valid: false,
-      reason: `압축 파일 안에 동영상 파일(.mp4, .avi, .mov 등)만 포함되어야 합니다.`,
+      reason: "압축 파일 안에 동영상 파일(.mp4, .avi, .mov 등)만 포함되어야 합니다.",
       invalidFiles: invalidFiles.slice(0, 5), // 최대 5개만 표시
     };
   }
 
-  return { valid: true, fileCount: entries.length };
+  return { valid: true, fileCount: entries.length, kind: "video" };
+}
+
+export async function readSceneGraphJsonFromZip(file: File): Promise<unknown> {
+  const zip = await JSZip.loadAsync(file);
+  const entries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && !isMetaEntry(entry.name),
+  );
+  const jsonEntry = entries.length === 1 && isJsonFile(entries[0].name) ? entries[0] : null;
+
+  if (!jsonEntry) {
+    throw new Error("scene graph JSON 파일 1개만 포함된 ZIP이 아닙니다.");
+  }
+
+  return toSceneGraphPayload(JSON.parse(await jsonEntry.async("text")) as unknown);
 }
