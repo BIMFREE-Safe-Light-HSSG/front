@@ -15,26 +15,81 @@ function isVec3(value: unknown): value is Vec3 {
   );
 }
 
+function toVec3(value: unknown): Vec3 | null {
+  if (isVec3(value)) {
+    return [value[0], value[1], value[2]];
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw.x === "number" &&
+    Number.isFinite(raw.x) &&
+    typeof raw.y === "number" &&
+    Number.isFinite(raw.y) &&
+    typeof raw.z === "number" &&
+    Number.isFinite(raw.z)
+  ) {
+    return [raw.x, raw.y, raw.z];
+  }
+
+  return null;
+}
+
+function normalizeSeverity(value: unknown): FireIncident["severity"] {
+  if (typeof value !== "string") return "high";
+
+  const key = value.toLowerCase();
+  if (key === "low" || key === "medium" || key === "high") {
+    return key;
+  }
+
+  return "high";
+}
+
 function parseIncident(raw: unknown): FireIncident | null {
   if (typeof raw !== "object" || raw === null) return null;
   const item = raw as Record<string, unknown>;
-  if (typeof item.id !== "string" || !isVec3(item.position)) return null;
+  const position = toVec3(item.position);
+  if (typeof item.id !== "string" || !position) return null;
 
-  const severity =
-    item.severity === "low" || item.severity === "medium" || item.severity === "high"
-      ? item.severity
-      : "high";
+  const status = typeof item.status === "string" ? item.status.toUpperCase() : "ACTIVE";
+  if (status !== "ACTIVE") return null;
 
   return {
     id: item.id,
-    position: [item.position[0], item.position[1], item.position[2]],
-    severity,
-    reported_at: typeof item.reported_at === "string" ? item.reported_at : new Date().toISOString(),
+    position,
+    severity: normalizeSeverity(item.severity),
+    reported_at:
+      typeof item.reported_at === "string"
+        ? item.reported_at
+        : typeof item.created_at === "string"
+          ? item.created_at
+          : new Date().toISOString(),
     ...(typeof item.note === "string" ? { note: item.note } : {}),
     ...(typeof item.reported_by === "string" ? { reported_by: item.reported_by } : {}),
-    ...(typeof item.zone_id === "string" ? { zone_id: item.zone_id } : {}),
+    ...(typeof item.zone_id === "string"
+      ? { zone_id: item.zone_id }
+      : typeof item.target_node_id === "string"
+        ? { zone_id: item.target_node_id }
+        : {}),
     ...(typeof item.zone_name === "string" ? { zone_name: item.zone_name } : {}),
   };
+}
+
+function collectIncidentCandidates(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value);
+  }
+
+  return [];
 }
 
 export function loadFireIncidents(buildingId: string): FireIncident[] {
@@ -65,8 +120,30 @@ export function saveFireIncidents(buildingId: string, incidents: FireIncident[])
 }
 
 export function parseFireIncidentsFromSceneGraph(raw: unknown): FireIncident[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map(parseIncident).filter((item): item is FireIncident => Boolean(item));
+  if (Array.isArray(raw)) {
+    return raw.map(parseIncident).filter((item): item is FireIncident => Boolean(item));
+  }
+
+  if (typeof raw !== "object" || raw === null) {
+    return [];
+  }
+
+  const item = raw as Record<string, unknown>;
+  const candidates: unknown[] = [];
+
+  for (const key of ["fire_incidents", "incidents", "items"]) {
+    candidates.push(...collectIncidentCandidates(item[key]));
+  }
+
+  const overlays = item.overlays;
+  if (typeof overlays === "object" && overlays !== null) {
+    const overlayRecord = overlays as Record<string, unknown>;
+    for (const key of ["fire_incidents", "incidents", "items"]) {
+      candidates.push(...collectIncidentCandidates(overlayRecord[key]));
+    }
+  }
+
+  return candidates.map(parseIncident).filter((incident): incident is FireIncident => Boolean(incident));
 }
 
 export function resolveFireIncidents(

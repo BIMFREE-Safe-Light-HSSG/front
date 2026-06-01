@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { isStructuralAssetClass } from "@/lib/scene-graph-skeleton/structural-assets";
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
 import { wallYawFromZones } from "@/lib/scene-graph-skeleton/wall-orientation";
+import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import type { FacilityAssetRef, ZoneNode } from "@/lib/scene-graph-skeleton/types";
 
 const DOOR_WIDTH = 0.92;
@@ -82,6 +83,7 @@ export type StructuralAssetMeshProps = {
   interactive?: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+  onContextPick?: (target: SceneContextTarget) => void;
 };
 
 function structuralKind(assetClass: string): "door" | "window" | null {
@@ -310,6 +312,7 @@ export function StructuralAssetMesh({
   interactive = true,
   onSelect,
   onHover,
+  onContextPick,
 }: StructuralAssetMeshProps) {
   const kind = structuralKind(asset.class);
   const active = selected || hovered || highlighted;
@@ -344,6 +347,19 @@ export function StructuralAssetMesh({
     onClick: (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
       onSelect(asset.id);
+    },
+    onContextMenu: (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      e.nativeEvent.preventDefault();
+      onContextPick?.({
+        position: asset.position,
+        clientX: e.nativeEvent.clientX,
+        clientY: e.nativeEvent.clientY,
+        zoneId: asset.zoneId,
+        zoneName: asset.zoneName,
+        assetId: asset.id,
+        assetClass: asset.class,
+      });
     },
     onPointerOver: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();

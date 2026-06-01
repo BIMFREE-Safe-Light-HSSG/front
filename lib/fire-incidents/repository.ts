@@ -2,7 +2,6 @@ import type { UserJob } from "@/app/api/auth";
 import {
   createBuildingFireIncident,
   deleteBuildingFireIncident,
-  listBuildingFireIncidents,
 } from "@/app/api/fire-incidents";
 import { isDemoBuildingId } from "@/lib/facility-demo/seed";
 import {
@@ -23,7 +22,7 @@ function dispatchFireChanged(buildingId: string) {
   );
 }
 
-export function useDemoFireStorage(buildingId: string | null | undefined): boolean {
+export function isDemoFireStorageEnabled(buildingId: string | null | undefined): boolean {
   return Boolean(buildingId && isDemoBuildingId(buildingId));
 }
 
@@ -37,19 +36,11 @@ export async function fetchBuildingFireIncidents(
 ): Promise<FireIncident[]> {
   const seed = parseFireIncidentsFromSceneGraph(options.sceneGraphSeed);
 
-  if (useDemoFireStorage(buildingId)) {
+  if (isDemoFireStorageEnabled(buildingId)) {
     return resolveFireIncidents(buildingId, seed);
   }
 
-  if (!options.accessToken) {
-    return seed;
-  }
-
-  try {
-    return await listBuildingFireIncidents(options.accessToken, buildingId, options.job);
-  } catch {
-    return seed;
-  }
+  return seed;
 }
 
 export async function registerBuildingFireIncident(
@@ -64,7 +55,7 @@ export async function registerBuildingFireIncident(
     reportedBy?: string;
   },
 ): Promise<FireIncident> {
-  if (useDemoFireStorage(buildingId)) {
+  if (isDemoFireStorageEnabled(buildingId)) {
     const next = createFireIncident(options.position, {
       zoneId: options.zoneId,
       zoneName: options.zoneName,
@@ -98,7 +89,7 @@ export async function removeBuildingFireIncident(
   incidentId: string,
   options: { accessToken: string | null },
 ): Promise<void> {
-  if (useDemoFireStorage(buildingId)) {
+  if (isDemoFireStorageEnabled(buildingId)) {
     const current = loadFireIncidents(buildingId).filter((item) => item.id !== incidentId);
     saveFireIncidents(buildingId, current);
     dispatchFireChanged(buildingId);

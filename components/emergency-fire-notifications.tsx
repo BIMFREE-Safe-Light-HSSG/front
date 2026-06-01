@@ -10,17 +10,31 @@ import {
   markFireNotificationRead,
   type FireNotification,
 } from "@/app/api/fire-incidents";
+import type { ViewerBuilding } from "@/app/api/viewer";
+import { getStoredAuthUser } from "@/lib/auth/storage";
+import {
+  markSceneGraphFireNotificationRead,
+  pollSceneGraphFireNotifications,
+  type SceneGraphFirePollResult,
+} from "@/lib/fire-incidents/scene-graph-notifications";
 import { formatViewerDateTime } from "@/lib/format/datetime";
 import { cn } from "@/lib/utils";
 
 type EmergencyFireNotificationsProps = {
   /** 지정 시 콜백만 호출; 없으면 /emergency?buildingId= 로 이동 */
   onSelectBuilding?: (buildingId: string) => void;
+  /** 지정하면 백엔드 알림 API 대신 scene graph를 polling해서 알림을 만든다. */
+  pollBuildings?: ViewerBuilding[];
+  onSceneGraphPoll?: (result: SceneGraphFirePollResult) => void;
+  pollIntervalMs?: number;
   className?: string;
 };
 
 export function EmergencyFireNotifications({
   onSelectBuilding,
+  pollBuildings,
+  onSceneGraphPoll,
+  pollIntervalMs = 15_000,
   className,
 }: EmergencyFireNotificationsProps) {
   const router = useRouter();
@@ -28,12 +42,30 @@ export function EmergencyFireNotifications({
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<FireNotification[]>([]);
   const [loading, setLoading] = useState(false);
+  const useSceneGraphPolling = pollBuildings !== undefined;
+
+  const getReadScope = useCallback(() => {
+    const user = getStoredAuthUser();
+    return user?.id ?? user?.email ?? "anonymous";
+  }, []);
 
   const refresh = useCallback(async () => {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
 
     try {
+      if (useSceneGraphPolling) {
+        const result = await pollSceneGraphFireNotifications({
+          accessToken: token,
+          buildings: pollBuildings ?? [],
+          readScope: getReadScope(),
+        });
+        setNotifications(result.notifications);
+        setUnreadCount(result.notifications.filter((item) => !item.read_at).length);
+        onSceneGraphPoll?.(result);
+        return;
+      }
+
       const [count, items] = await Promise.all([
         getFireNotificationUnreadCount(token),
         listFireNotifications(token, false),
@@ -43,18 +75,18 @@ export function EmergencyFireNotifications({
     } catch {
       /* ignore polling errors */
     }
-  }, []);
+  }, [getReadScope, onSceneGraphPoll, pollBuildings, useSceneGraphPolling]);
 
   useEffect(() => {
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 20_000);
+    const interval = window.setInterval(() => void refresh(), pollIntervalMs);
     const onAuthChange = () => void refresh();
     window.addEventListener("auth-state-changed", onAuthChange);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("auth-state-changed", onAuthChange);
     };
-  }, [refresh]);
+  }, [pollIntervalMs, refresh]);
 
   const handleOpen = async () => {
     setOpen(true);
@@ -65,7 +97,15 @@ export function EmergencyFireNotifications({
 
   const handleSelect = async (notification: FireNotification) => {
     const token = localStorage.getItem("accessToken");
-    if (token && !notification.read_at) {
+    if (useSceneGraphPolling && !notification.read_at) {
+      markSceneGraphFireNotificationRead(getReadScope(), notification.id);
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item,
+        ),
+      );
+      setUnreadCount((current) => Math.max(0, current - 1));
+    } else if (token && !notification.read_at) {
       try {
         await markFireNotificationRead(token, notification.id);
       } catch {
@@ -78,7 +118,9 @@ export function EmergencyFireNotifications({
       router.push(`/emergency?buildingId=${encodeURIComponent(notification.building_id)}`);
     }
     setOpen(false);
-    void refresh();
+    if (!useSceneGraphPolling) {
+      void refresh();
+    }
   };
 
   return (

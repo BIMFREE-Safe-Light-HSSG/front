@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 import { StructuralAssetMesh, shouldRenderStructuralMesh } from "@/components/facility-building-viewer/StructuralAssetMesh";
+import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import { assetClassStyle } from "@/lib/scene-graph-skeleton/assets";
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
 import type { AssetStatus, FacilityAssetRef, ZoneNode } from "@/lib/scene-graph-skeleton/types";
@@ -28,6 +29,7 @@ export type AssetSpotProps = {
   interactive?: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+  onContextPick?: (target: SceneContextTarget) => void;
 };
 
 function statusPulseKind(
@@ -57,6 +59,7 @@ function FacilityAssetSpot({
   interactive = true,
   onSelect,
   onHover,
+  onContextPick,
 }: AssetSpotProps) {
   const groupRef = useRef<THREE.Group>(null);
   const ringRef = useRef<THREE.Mesh>(null);
@@ -183,6 +186,19 @@ function FacilityAssetSpot({
     onClick: (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
       onSelect(asset.id);
+    },
+    onContextMenu: (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      e.nativeEvent.preventDefault();
+      onContextPick?.({
+        position: asset.position,
+        clientX: e.nativeEvent.clientX,
+        clientY: e.nativeEvent.clientY,
+        zoneId: asset.zoneId,
+        zoneName: asset.zoneName,
+        assetId: asset.id,
+        assetClass: asset.class,
+      });
     },
     onPointerOver: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();

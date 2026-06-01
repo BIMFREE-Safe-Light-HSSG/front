@@ -12,8 +12,10 @@ import {
   User,
 } from "lucide-react";
 import { getMe, type AuthUser } from "@/app/api/auth";
+import { getBuildings, type ViewerBuilding } from "@/app/api/viewer";
 import { EmergencyFireNotifications } from "@/components/emergency-fire-notifications";
 import { Button } from "@/components/ui/button";
+import { mergeDemoWorkspace } from "@/lib/facility-demo/seed";
 const getStoredUser = () => {
   const userJson = localStorage.getItem("currentUser");
 
@@ -28,6 +30,7 @@ const getStoredUser = () => {
 
 export default function Home() {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [emergencyBuildings, setEmergencyBuildings] = useState<ViewerBuilding[]>([]);
 
   useEffect(() => {
     const syncUser = async () => {
@@ -64,6 +67,40 @@ export default function Home() {
       window.removeEventListener("storage", syncUser);
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadEmergencyBuildings = async () => {
+      if (user?.job !== "FIREFIGHTER") {
+        setEmergencyBuildings([]);
+        return;
+      }
+
+      const token = localStorage.getItem("accessToken");
+      if (!token) return;
+
+      try {
+        const data = mergeDemoWorkspace(
+          {
+            buildings: await getBuildings(token),
+            default_building_id: null,
+            default_scene_graph: null,
+          },
+          user,
+        );
+        if (isMounted) setEmergencyBuildings(data.buildings);
+      } catch {
+        if (isMounted) setEmergencyBuildings([]);
+      }
+    };
+
+    void loadEmergencyBuildings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
@@ -181,7 +218,7 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <EmergencyFireNotifications />
+                    <EmergencyFireNotifications pollBuildings={emergencyBuildings} />
                     <ActionCard
                       href="/emergency"
                       icon={<ShieldCheck className="h-5 w-5" />}

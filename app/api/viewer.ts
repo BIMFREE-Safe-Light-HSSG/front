@@ -1,6 +1,7 @@
 import axios from "axios";
 import type { BuildingLocationPayload } from "@/app/api/auth";
 import { apiUrl } from "@/lib/api/client";
+import type { Vec3 } from "@/lib/scene-graph-skeleton/types";
 
 /** FRONT.md — BuildingSummaryResponse */
 export type ViewerBuilding = {
@@ -31,6 +32,63 @@ export type SceneGraph = {
   };
 };
 
+export type SceneGraphPositionPayload = {
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type SceneGraphMutation =
+  | {
+      type: "ADD_NODE";
+      payload: {
+        node: {
+          type: "facility";
+          label: string;
+          position: SceneGraphPositionPayload;
+          metadata?: Record<string, unknown>;
+        };
+      };
+    }
+  | {
+      type: "REMOVE_NODE";
+      payload:
+        | {
+            node_id: string;
+          }
+        | {
+            node: {
+              id: string;
+            };
+          }
+        | {
+            id: string;
+          };
+    }
+  | {
+      type: "UPDATE_NODE";
+      payload: {
+        node: {
+          id: string;
+          [key: string]: unknown;
+        };
+      };
+    }
+  | {
+      type: "ADD_OVERLAY";
+      payload: {
+        overlay_type: "incidents" | string;
+        overlay: Record<string, unknown>;
+      };
+    }
+  | {
+      type: "REMOVE_OVERLAY";
+      payload: {
+        overlay_type: "incidents" | string;
+        overlay_id: string;
+      };
+    };
+
 /** FRONT.md에 workspace API 없음 — 클라이언트에서 조합 */
 export type ViewerBootstrap = {
   buildings: ViewerBuilding[];
@@ -57,6 +115,10 @@ const authHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,
 });
 
+export function vec3ToSceneGraphPosition([x, y, z]: Vec3): SceneGraphPositionPayload {
+  return { x, y, z };
+}
+
 /** GET /buildings — 시설·소방 공통, 서버가 역할별 필터링 */
 export const getBuildings = async (accessToken: string): Promise<ViewerBuilding[]> => {
   const response = await axios.get<ViewerBuilding[]>(apiUrl("/buildings"), {
@@ -75,6 +137,35 @@ export const getBuildingSceneGraph = async (
     apiUrl(`/buildings/${buildingId}/scene-graph`),
     {
       headers: authHeaders(accessToken),
+    },
+  );
+
+  return response.data;
+};
+
+/** POST /buildings/{building_id}/scene-graph/mutations */
+export const applySceneGraphMutations = async ({
+  accessToken,
+  buildingId,
+  baseGraphDataId,
+  mutations,
+}: {
+  accessToken: string;
+  buildingId: string;
+  baseGraphDataId: string;
+  mutations: SceneGraphMutation[];
+}): Promise<SceneGraph> => {
+  const response = await axios.post<SceneGraph>(
+    apiUrl(`/buildings/${buildingId}/scene-graph/mutations`),
+    {
+      base_graph_data_id: baseGraphDataId,
+      mutations,
+    },
+    {
+      headers: {
+        ...authHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
     },
   );
 

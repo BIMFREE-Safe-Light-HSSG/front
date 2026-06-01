@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -23,11 +23,13 @@ import {
   type ViewerBuilding,
 } from "@/app/api/viewer";
 import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
+import { EmergencyFireNotifications } from "@/components/emergency-fire-notifications";
 import { getStoredAuthUser } from "@/lib/auth/storage";
 import {
   getBuildingActiveFireCount,
   sortBuildingsByFirePriority,
 } from "@/lib/fire-incidents/building-list";
+import type { SceneGraphFirePollResult } from "@/lib/fire-incidents/scene-graph-notifications";
 import { FIRE_INCIDENTS_CHANGED_EVENT } from "@/lib/fire-incidents/storage";
 import {
   getDemoSceneGraph,
@@ -68,6 +70,53 @@ export default function EmergencyWorkspaceView() {
 
   const nodeCount = sceneGraph?.scene_graph.nodes?.length ?? 0;
   const edgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
+
+  const handleSceneGraphPoll = useCallback(
+    (result: SceneGraphFirePollResult) => {
+      setBuildings((current) => {
+        let changed = false;
+        const next = current.map((building) => {
+          const graph = result.sceneGraphsByBuildingId[building.id];
+          const fireCount = result.fireCountsByBuildingId[building.id];
+          const nextFireCount =
+            typeof fireCount === "number" ? fireCount : building.active_fire_count;
+          const nextLatestGraphCreatedAt = graph?.created_at ?? building.latest_graph_created_at;
+          const nextHasSceneGraph = graph ? true : building.has_scene_graph;
+
+          if (
+            nextFireCount === building.active_fire_count &&
+            nextLatestGraphCreatedAt === building.latest_graph_created_at &&
+            nextHasSceneGraph === building.has_scene_graph
+          ) {
+            return building;
+          }
+
+          changed = true;
+          return {
+            ...building,
+            active_fire_count: nextFireCount,
+            latest_graph_created_at: nextLatestGraphCreatedAt,
+            has_scene_graph: nextHasSceneGraph,
+          };
+        });
+
+        return changed ? next : current;
+      });
+
+      if (selectedBuildingId) {
+        const nextSceneGraph = result.sceneGraphsByBuildingId[selectedBuildingId];
+        if (nextSceneGraph) {
+          setSceneGraph((current) =>
+            current?.graph_data_id === nextSceneGraph.graph_data_id ? current : nextSceneGraph,
+          );
+          setSceneGraphStatus("ready");
+        }
+      }
+
+      setFireListRevision((value) => value + 1);
+    },
+    [selectedBuildingId],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -309,6 +358,13 @@ export default function EmergencyWorkspaceView() {
               className="flex flex-1 flex-col rounded-[2rem] border border-white/60 bg-white/20 p-8"
               style={{ backdropFilter: "blur(20px)" }}
             >
+              <EmergencyFireNotifications
+                pollBuildings={buildings}
+                onSceneGraphPoll={handleSceneGraphPoll}
+                onSelectBuilding={(buildingId) => void handleSelectBuilding(buildingId)}
+                className="mb-6"
+              />
+
               <h3 className="font-black text-xs uppercase italic tracking-[0.3em] text-zinc-400">
                 관할 건물
               </h3>

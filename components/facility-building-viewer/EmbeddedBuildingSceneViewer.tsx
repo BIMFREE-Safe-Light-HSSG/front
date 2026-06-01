@@ -2,10 +2,13 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ClipboardList, Database, Flame, Loader2, Search } from "lucide-react";
+import { AlertTriangle, ClipboardList, Database, Flame, Loader2, Plus, Search, Trash2 } from "lucide-react";
 
 import { AssetDetailPanel } from "@/components/facility-building-viewer/AssetDetailPanel";
-import { BuildingSceneCanvas } from "@/components/facility-building-viewer/BuildingSceneCanvas";
+import {
+  BuildingSceneCanvas,
+  type SceneContextTarget,
+} from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import { AssetHoverTooltip } from "@/components/facility-building-viewer/AssetHoverTooltip";
 import { ViewerCanvasNavBar } from "@/components/facility-building-viewer/ViewerCanvasNavBar";
 import { ViewerFireIncidentsPanel } from "@/components/facility-building-viewer/ViewerFireIncidentsPanel";
@@ -24,18 +27,31 @@ import {
   viewerGlass,
   viewerType,
 } from "@/components/facility-building-viewer/viewer-design";
-import type { SceneGraph } from "@/app/api/viewer";
+import {
+  applySceneGraphMutations,
+  getBuildingSceneGraph,
+  vec3ToSceneGraphPosition,
+  type SceneGraph,
+  type SceneGraphMutation,
+} from "@/app/api/viewer";
 import { getStoredAuthUser } from "@/lib/auth/storage";
 import type { FireIncident } from "@/lib/fire-incidents/types";
 import { parseFireIncidentsFromSceneGraph } from "@/lib/fire-incidents/storage";
-import {
-  fetchBuildingFireIncidents,
-  registerBuildingFireIncident,
-  removeBuildingFireIncident,
-} from "@/lib/fire-incidents/repository";
+import { fetchBuildingFireIncidents } from "@/lib/fire-incidents/repository";
 import { FIRE_INCIDENTS_CHANGED_EVENT } from "@/lib/fire-incidents/storage";
 import type { FireSeverity } from "@/lib/fire-incidents/types";
 import { FireIncidentRegisterDialog } from "@/components/facility-building-viewer/FireIncidentRegisterDialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   collectAssets,
   findZoneForAssetPosition,
@@ -61,6 +77,7 @@ import type {
   Vec3,
   ZoneNode,
 } from "@/lib/scene-graph-skeleton/types";
+import { getAxiosErrorStatus } from "@/lib/http/errors";
 import { cn } from "@/lib/utils";
 
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
@@ -74,6 +91,7 @@ type EmbeddedBuildingSceneViewerProps = {
   /** false — 3D·검색만 (소방 등), 점검 이력·관리 기록 비활성 */
   enableFacilityTools?: boolean;
   isEmergency?: boolean;
+  onSceneGraphChange?: (sceneGraph: SceneGraph) => void;
   /** 화재 등록·삭제 시 건물 목록 재정렬용 */
   onFireIncidentsChange?: () => void;
 };
@@ -100,10 +118,36 @@ function isVec3(value: unknown): value is Vec3 {
   );
 }
 
-function normalizeAsset(raw: unknown): SkeletonAsset | null {
-  if (!isRecord(raw) || typeof raw.id !== "string" || !isVec3(raw.position)) {
+function normalizePosition(value: unknown): Vec3 | null {
+  if (isVec3(value)) {
+    return [value[0], value[1], value[2]];
+  }
+
+  if (!isRecord(value)) {
     return null;
   }
+
+  if (
+    typeof value.x === "number" &&
+    Number.isFinite(value.x) &&
+    typeof value.y === "number" &&
+    Number.isFinite(value.y) &&
+    typeof value.z === "number" &&
+    Number.isFinite(value.z)
+  ) {
+    return [value.x, value.y, value.z];
+  }
+
+  return null;
+}
+
+function normalizeAsset(raw: unknown): SkeletonAsset | null {
+  if (!isRecord(raw) || typeof raw.id !== "string") {
+    return null;
+  }
+
+  const position = normalizePosition(raw.position);
+  if (!position) return null;
 
   const rawClass =
     typeof raw.class === "string"
@@ -112,6 +156,8 @@ function normalizeAsset(raw: unknown): SkeletonAsset | null {
         ? raw.category
         : typeof raw.name === "string"
           ? raw.name
+          : typeof raw.label === "string"
+            ? raw.label
           : typeof raw.type === "string"
             ? raw.type
             : "Asset";
@@ -124,7 +170,7 @@ function normalizeAsset(raw: unknown): SkeletonAsset | null {
   return {
     id: raw.id,
     class: rawClass,
-    position: [raw.position[0], raw.position[1], raw.position[2]],
+    position,
     ...(status ? { status } : {}),
     ...(inspection_history ? { inspection_history } : {}),
   };
@@ -176,27 +222,97 @@ function normalizeZone(raw: unknown): ZoneNode | null {
 
 function toSkeletonDocument(sceneGraph: SceneGraph): SceneGraphSkeleton {
   const raw = sceneGraph.scene_graph;
-  const nodes = Array.isArray(raw.nodes)
-    ? raw.nodes.map(normalizeZone).filter((node): node is ZoneNode => Boolean(node))
-    : [];
-  const assets = Array.isArray(raw.assets)
+  const rawNodes = Array.isArray(raw.nodes) ? raw.nodes : [];
+  const nodes = rawNodes.map(normalizeZone).filter((node): node is ZoneNode => Boolean(node));
+  const nodeAssets = rawNodes
+    .filter((node) => !(isRecord(node) && node.type === "ZONE"))
+    .map(normalizeAsset)
+    .filter((asset): asset is SkeletonAsset => Boolean(asset));
+  const rawAssets = Array.isArray(raw.assets)
     ? raw.assets.map(normalizeAsset).filter((asset): asset is SkeletonAsset => Boolean(asset))
-    : undefined;
+    : [];
+  const assets = [...rawAssets, ...nodeAssets];
   const inspection_history = parseInspectionHistory(raw.inspection_history);
-  const fire_incidents = parseFireIncidentsFromSceneGraph(
-    (raw as { fire_incidents?: unknown }).fire_incidents,
-  );
+  const fire_incidents = parseFireIncidentsFromSceneGraph(raw);
 
   return {
     building_id: sceneGraph.building_name || sceneGraph.building_id,
     scene_graph: {
       nodes,
       edges: Array.isArray(raw.edges) ? raw.edges : [],
-      ...(assets && assets.length > 0 ? { assets } : {}),
+      ...(assets.length > 0 ? { assets } : {}),
       ...(inspection_history ? { inspection_history } : {}),
       ...(fire_incidents.length > 0 ? { fire_incidents } : {}),
     },
   };
+}
+
+function rawSceneGraphNodes(sceneGraph: SceneGraph): unknown[] {
+  return Array.isArray(sceneGraph.scene_graph.nodes) ? sceneGraph.scene_graph.nodes : [];
+}
+
+function createClientAssetId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `facility-${crypto.randomUUID()}`;
+  }
+
+  return `facility-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function zoneAssetAddMutation(
+  sceneGraph: SceneGraph,
+  zoneId: string | undefined,
+  asset: SkeletonAsset,
+): SceneGraphMutation | null {
+  if (!zoneId) return null;
+
+  const zone = rawSceneGraphNodes(sceneGraph).find(
+    (node) => isRecord(node) && node.type === "ZONE" && node.id === zoneId,
+  );
+
+  if (!isRecord(zone) || typeof zone.id !== "string") {
+    return null;
+  }
+
+  const assets = Array.isArray(zone.assets) ? zone.assets : [];
+
+  return {
+    type: "UPDATE_NODE",
+    payload: {
+      node: {
+        id: zone.id,
+        assets: [...assets, asset],
+      },
+    },
+  };
+}
+
+function zoneAssetRemoveMutation(
+  sceneGraph: SceneGraph,
+  assetId: string,
+): SceneGraphMutation | null {
+  for (const node of rawSceneGraphNodes(sceneGraph)) {
+    if (!isRecord(node) || node.type !== "ZONE" || typeof node.id !== "string") {
+      continue;
+    }
+
+    const assets = Array.isArray(node.assets) ? node.assets : [];
+    if (!assets.some((asset) => isRecord(asset) && asset.id === assetId)) {
+      continue;
+    }
+
+    return {
+      type: "UPDATE_NODE",
+      payload: {
+        node: {
+          id: node.id,
+          assets: assets.filter((asset) => !(isRecord(asset) && asset.id === assetId)),
+        },
+      },
+    };
+  }
+
+  return null;
 }
 
 function ViewerMessage({
@@ -259,6 +375,7 @@ export function EmbeddedBuildingSceneViewer({
   districtName,
   enableFacilityTools = true,
   isEmergency = false,
+  onSceneGraphChange,
   onFireIncidentsChange,
 }: EmbeddedBuildingSceneViewerProps) {
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -278,6 +395,12 @@ export function EmbeddedBuildingSceneViewer({
   } | null>(null);
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
   const [fireSubmitting, setFireSubmitting] = useState(false);
+  const [contextTarget, setContextTarget] = useState<SceneContextTarget | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [pendingAssetTarget, setPendingAssetTarget] = useState<SceneContextTarget | null>(null);
+  const [assetDialogOpen, setAssetDialogOpen] = useState(false);
+  const [assetName, setAssetName] = useState("");
+  const [assetSubmitting, setAssetSubmitting] = useState(false);
 
   const canManageFires = enableFacilityTools && Boolean(buildingId);
   const firefighterZoneView = !enableFacilityTools;
@@ -293,6 +416,7 @@ export function EmbeddedBuildingSceneViewer({
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null);
 
   const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const cameraSeqRef = useRef(0);
 
   const doc = useMemo(() => (sceneGraph ? toSkeletonDocument(sceneGraph) : null), [sceneGraph]);
@@ -425,6 +549,258 @@ export function EmbeddedBuildingSceneViewer({
     [handleSelectAsset],
   );
 
+  const commitSceneGraphMutations = useCallback(
+    async (mutations: SceneGraphMutation[]) => {
+      if (!buildingId || !sceneGraph) {
+        throw new Error("Scene graph가 준비되지 않았습니다.");
+      }
+
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("로그인이 필요합니다.");
+      }
+
+      const applyWithBase = (baseGraphDataId: string) =>
+        applySceneGraphMutations({
+          accessToken: token,
+          buildingId,
+          baseGraphDataId,
+          mutations,
+        });
+
+      try {
+        const next = await applyWithBase(sceneGraph.graph_data_id);
+        onSceneGraphChange?.(next);
+        return next;
+      } catch (error) {
+        if (getAxiosErrorStatus(error) !== 409) {
+          throw error;
+        }
+
+        const latest = await getBuildingSceneGraph(token, buildingId);
+        onSceneGraphChange?.(latest);
+        const next = await applyWithBase(latest.graph_data_id);
+        onSceneGraphChange?.(next);
+        return next;
+      }
+    },
+    [buildingId, sceneGraph, onSceneGraphChange],
+  );
+
+  const closeContextMenu = useCallback(() => {
+    setContextTarget(null);
+    setContextMenuPosition(null);
+  }, []);
+
+  useEffect(() => {
+    if (!contextTarget) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && contextMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      closeContextMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeContextMenu, contextTarget]);
+
+  const zoneForContextTarget = useCallback(
+    (target: SceneContextTarget) =>
+      target.zoneId
+        ? { zoneId: target.zoneId, zoneName: target.zoneName }
+        : findZoneForAssetPosition(zones, target.position),
+    [zones],
+  );
+
+  const handleCanvasContextPick = useCallback(
+    (target: SceneContextTarget) => {
+      if (!enableFacilityTools) return;
+
+      const rect = canvasWrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      setContextTarget(target);
+      setContextMenuPosition({
+        x: Math.min(Math.max(target.clientX - rect.left, 8), rect.width - 190),
+        y: Math.min(Math.max(target.clientY - rect.top, 8), rect.height - 150),
+      });
+
+      if (target.assetId) {
+        setSelectedAssetId(target.assetId);
+        if (target.zoneId) setSelectedZoneId(target.zoneId);
+      }
+      if (target.fireId) {
+        setSelectedFireId(target.fireId);
+      }
+    },
+    [enableFacilityTools],
+  );
+
+  const openAssetAddDialog = useCallback(() => {
+    if (!contextTarget) return;
+    setPendingAssetTarget(contextTarget);
+    setAssetName("");
+    setAssetDialogOpen(true);
+    closeContextMenu();
+  }, [closeContextMenu, contextTarget]);
+
+  const handleConfirmAssetAdd = useCallback(async () => {
+    if (!pendingAssetTarget) return;
+
+    const name = assetName.trim();
+    if (!name) {
+      alert("시설물 이름을 입력해주세요.");
+      return;
+    }
+
+    const zone = zoneForContextTarget(pendingAssetTarget);
+    const metadata: Record<string, unknown> = {
+      facility_type: name,
+    };
+    if (zone?.zoneId) metadata.zone_id = zone.zoneId;
+    if (zone?.zoneName) metadata.zone_name = zone.zoneName;
+
+    setAssetSubmitting(true);
+    try {
+      const addNodeMutation: SceneGraphMutation = {
+        type: "ADD_NODE",
+        payload: {
+          node: {
+            type: "facility",
+            label: name,
+            position: vec3ToSceneGraphPosition(pendingAssetTarget.position),
+            metadata,
+          },
+        },
+      };
+      const addAssetMutation = sceneGraph
+        ? zoneAssetAddMutation(sceneGraph, zone?.zoneId, {
+            id: createClientAssetId(),
+            class: name,
+            position: pendingAssetTarget.position,
+            status: "normal",
+          })
+        : null;
+      const mutationCandidates = addAssetMutation
+        ? [addAssetMutation, addNodeMutation]
+        : [addNodeMutation];
+      let lastError: unknown;
+
+      for (const mutation of mutationCandidates) {
+        try {
+          await commitSceneGraphMutations([mutation]);
+          lastError = null;
+          break;
+        } catch (error) {
+          const status = getAxiosErrorStatus(error);
+          if (status !== 400 && status !== 422) {
+            throw error;
+          }
+          lastError = error;
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      setAssetDialogOpen(false);
+      setAssetName("");
+      setPendingAssetTarget(null);
+    } catch {
+      alert("시설물을 추가하지 못했습니다. 로그인 상태와 scene graph 최신 상태를 확인해주세요.");
+    } finally {
+      setAssetSubmitting(false);
+    }
+  }, [assetName, commitSceneGraphMutations, pendingAssetTarget, sceneGraph, zoneForContextTarget]);
+
+  const handleRemoveContextAsset = useCallback(async () => {
+    if (!contextTarget?.assetId) return;
+    if (!confirm(`${contextTarget.assetClass ?? "시설물"}을 삭제할까요?`)) return;
+
+    const nodeId = contextTarget.assetId;
+    const updateZoneAssetsMutation = sceneGraph
+      ? zoneAssetRemoveMutation(sceneGraph, nodeId)
+      : null;
+    const removeMutationCandidates: SceneGraphMutation[] = [
+      ...(updateZoneAssetsMutation ? [updateZoneAssetsMutation] : []),
+      {
+        type: "REMOVE_NODE",
+        payload: {
+          node_id: nodeId,
+        },
+      },
+      {
+        type: "REMOVE_NODE",
+        payload: {
+          node: {
+            id: nodeId,
+          },
+        },
+      },
+      {
+        type: "REMOVE_NODE",
+        payload: {
+          id: nodeId,
+        },
+      },
+    ];
+
+    try {
+      let lastError: unknown;
+
+      for (const mutation of removeMutationCandidates) {
+        try {
+          await commitSceneGraphMutations([mutation]);
+          lastError = null;
+          break;
+        } catch (error) {
+          const status = getAxiosErrorStatus(error);
+          if (status !== 400 && status !== 422) {
+            throw error;
+          }
+          lastError = error;
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      setSelectedAssetId((current) => (current === nodeId ? null : current));
+      closeContextMenu();
+    } catch {
+      alert("시설물을 삭제하지 못했습니다.");
+    }
+  }, [closeContextMenu, commitSceneGraphMutations, contextTarget, sceneGraph]);
+
+  const openFireAddDialog = useCallback(() => {
+    if (!contextTarget) return;
+
+    const zone = zoneForContextTarget(contextTarget);
+    setPendingPlacement({
+      position: contextTarget.position,
+      zoneId: zone?.zoneId,
+      zoneName: zone?.zoneName,
+    });
+    setDraftFirePosition(contextTarget.position);
+    setRegisterDialogOpen(true);
+    closeContextMenu();
+  }, [closeContextMenu, contextTarget, zoneForContextTarget]);
+
   const handleFirePlacementPick = useCallback(
     (position: Vec3) => {
       if (!canManageFires || !buildingId) return;
@@ -447,22 +823,34 @@ export function EmbeddedBuildingSceneViewer({
     async ({ severity, note }: { severity: FireSeverity; note: string }) => {
       if (!pendingPlacement || !buildingId) return;
 
-      const token = localStorage.getItem("accessToken");
       const user = getStoredAuthUser();
+      const overlay: Record<string, unknown> = {
+        type: "FIRE",
+        position: vec3ToSceneGraphPosition(pendingPlacement.position),
+        severity: severity.toUpperCase(),
+        status: "ACTIVE",
+      };
+      if (pendingPlacement.zoneId) {
+        overlay.target_node_id = pendingPlacement.zoneId;
+        overlay.zone_id = pendingPlacement.zoneId;
+      }
+      if (pendingPlacement.zoneName) overlay.zone_name = pendingPlacement.zoneName;
+      if (note) overlay.note = note;
+      if (user?.email) overlay.reported_by = user.email;
 
       setFireSubmitting(true);
       try {
-        const created = await registerBuildingFireIncident(buildingId, {
-          accessToken: token,
-          position: pendingPlacement.position,
-          severity,
-          note: note || undefined,
-          zoneId: pendingPlacement.zoneId,
-          zoneName: pendingPlacement.zoneName,
-          reportedBy: user?.email,
-        });
-        setFireIncidents((current) => [...current, created]);
-        setSelectedFireId(created.id);
+        await commitSceneGraphMutations([
+          {
+            type: "ADD_OVERLAY",
+            payload: {
+              overlay_type: "incidents",
+              overlay,
+            },
+          },
+        ]);
+        setLayerVisibility((value) => ({ ...value, fires: true }));
+        setSelectedFireId(null);
         onFireIncidentsChange?.();
       } catch {
         alert("화재 위치를 등록하지 못했습니다. 로그인 상태와 네트워크를 확인해 주세요.");
@@ -473,7 +861,7 @@ export function EmbeddedBuildingSceneViewer({
         setDraftFirePosition(null);
       }
     },
-    [pendingPlacement, buildingId, onFireIncidentsChange],
+    [pendingPlacement, buildingId, commitSceneGraphMutations, onFireIncidentsChange],
   );
 
   const handleCancelFireRegister = useCallback(() => {
@@ -487,9 +875,16 @@ export function EmbeddedBuildingSceneViewer({
       if (!buildingId) return;
       if (!confirm("이 화재 위치를 삭제할까요?")) return;
 
-      const token = localStorage.getItem("accessToken");
       try {
-        await removeBuildingFireIncident(buildingId, id, { accessToken: token });
+        await commitSceneGraphMutations([
+          {
+            type: "REMOVE_OVERLAY",
+            payload: {
+              overlay_type: "incidents",
+              overlay_id: id,
+            },
+          },
+        ]);
         setFireIncidents((current) => current.filter((item) => item.id !== id));
         setSelectedFireId((current) => (current === id ? null : current));
         onFireIncidentsChange?.();
@@ -497,7 +892,7 @@ export function EmbeddedBuildingSceneViewer({
         alert("화재 위치를 삭제하지 못했습니다.");
       }
     },
-    [buildingId, onFireIncidentsChange],
+    [buildingId, commitSceneGraphMutations, onFireIncidentsChange],
   );
 
   if (!sceneGraph || status !== "ready" || zones.length === 0) {
@@ -518,6 +913,11 @@ export function EmbeddedBuildingSceneViewer({
       onPointerLeave={() => {
         setHoverAnchor(null);
         setHoveredAssetId(null);
+      }}
+      onContextMenu={(event) => {
+        if (enableFacilityTools) {
+          event.preventDefault();
+        }
       }}
     >
       <div className={viewerGlass.canvasVignette} aria-hidden />
@@ -693,6 +1093,68 @@ export function EmbeddedBuildingSceneViewer({
         />
       ) : null}
 
+      {enableFacilityTools && contextTarget && contextMenuPosition ? (
+        <div
+          ref={contextMenuRef}
+          className={cn(
+            viewerGlass.overlayLight,
+            "pointer-events-auto absolute z-40 w-48 overflow-hidden rounded-xl border border-white/50 p-1.5 shadow-2xl",
+          )}
+          style={{
+            left: contextMenuPosition.x,
+            top: contextMenuPosition.y,
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="px-2 py-1.5">
+            <p className={cn(viewerType.mono, "truncate text-[10px] text-zinc-500")}>
+              {contextTarget.position.map((value) => value.toFixed(1)).join(", ")}
+            </p>
+          </div>
+          {contextTarget.assetId ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"
+              onClick={() => void handleRemoveContextAsset()}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              시설물 삭제
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-zinc-800 hover:bg-white/80"
+              onClick={openAssetAddDialog}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              시설물 추가
+            </button>
+          )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-800 hover:bg-red-50"
+            onClick={openFireAddDialog}
+          >
+            <Flame className="h-3.5 w-3.5" />
+            화재 발생 추가
+          </button>
+          {contextTarget.fireId ? (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50"
+              onClick={() => {
+                const fireId = contextTarget.fireId;
+                closeContextMenu();
+                if (fireId) void handleRemoveFire(fireId);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              화재 발생 삭제
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <BuildingSceneCanvas
         zones={zones}
         assets={canvasAssets}
@@ -726,6 +1188,7 @@ export function EmbeddedBuildingSceneViewer({
           setHoveredAssetId(id);
           if (!id) setHoverAnchor(null);
         }}
+        onContextPick={enableFacilityTools ? handleCanvasContextPick : undefined}
         onClearSelection={() => {
           if (firePlacementActive) return;
           setSelectedZoneId(null);
@@ -745,6 +1208,63 @@ export function EmbeddedBuildingSceneViewer({
         asset={hoveredAsset && !selectedAsset ? hoveredAsset : null}
         anchor={hoverAnchor}
       />
+
+      <Dialog
+        open={assetDialogOpen}
+        onOpenChange={(next) => {
+          if (next || assetSubmitting) return;
+          setAssetDialogOpen(false);
+          setPendingAssetTarget(null);
+          setAssetName("");
+        }}
+      >
+        <DialogContent className="max-w-md border-red-900/15 bg-white/95">
+          <DialogHeader>
+            <DialogTitle>시설물 추가</DialogTitle>
+            <DialogDescription>
+              우클릭한 좌표에 추가할 시설물 이름을 입력하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="asset-name">시설물 이름</Label>
+            <Input
+              id="asset-name"
+              value={assetName}
+              disabled={assetSubmitting}
+              placeholder="예: 소화기"
+              onChange={(event) => setAssetName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleConfirmAssetAdd();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={assetSubmitting}
+              onClick={() => {
+                setAssetDialogOpen(false);
+                setPendingAssetTarget(null);
+                setAssetName("");
+              }}
+            >
+              취소
+            </Button>
+            <Button
+              type="button"
+              disabled={assetSubmitting}
+              className="bg-red-950 text-white hover:bg-red-900"
+              onClick={() => void handleConfirmAssetAdd()}
+            >
+              {assetSubmitting ? "추가 중..." : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <FireIncidentRegisterDialog
         open={registerDialogOpen}

@@ -6,6 +6,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
+import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import type { FireIncident } from "@/lib/fire-incidents/types";
 
 /** 뷰어에서 화재 지점이 한눈에 들어오도록 전체 스케일 */
@@ -128,6 +129,7 @@ export type FireIncidentMarkerProps = {
   selected: boolean;
   interactive: boolean;
   onSelect: (id: string) => void;
+  onContextPick?: (target: SceneContextTarget) => void;
 };
 
 export function FireIncidentMarker({
@@ -135,6 +137,7 @@ export function FireIncidentMarker({
   selected,
   interactive,
   onSelect,
+  onContextPick,
 }: FireIncidentMarkerProps) {
   const groupRef = useRef<THREE.Group>(null);
   const billboardRef = useRef<THREE.Group>(null);
@@ -254,6 +257,18 @@ export function FireIncidentMarker({
         onClick: (e: ThreeEvent<MouseEvent>) => {
           e.stopPropagation();
           onSelect(incident.id);
+        },
+        onContextMenu: (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          e.nativeEvent.preventDefault();
+          onContextPick?.({
+            position: incident.position,
+            clientX: e.nativeEvent.clientX,
+            clientY: e.nativeEvent.clientY,
+            zoneId: incident.zone_id,
+            zoneName: incident.zone_name,
+            fireId: incident.id,
+          });
         },
         onPointerOver: (e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
