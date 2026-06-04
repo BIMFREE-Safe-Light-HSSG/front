@@ -3,6 +3,9 @@ import * as THREE from "three"
 import { skeletonCenterToThreeBase } from "./coordinates"
 import type { ZoneNode } from "./types"
 
+/** MergedBuildingSlab — shell과 겹침 방지 */
+export const FLOOR_SURFACE_LIFT = 0.025
+
 const ZONE_PALETTE = [
   0x7eb8ff, 0x6ee7b7, 0xfbbf24, 0xc4b5fd, 0xf9a8d4, 0x67e8f9, 0xfdba74, 0xa5b4fc,
 ] as const
@@ -104,11 +107,94 @@ export function stripUpwardCapFaces(
   return next
 }
 
+/** 월드 −Y를 향하는 바닥 캡 면 제거 (MergedBuildingSlab과 Z-fighting 방지) */
+export function stripDownwardCapFaces(
+  geometry: THREE.BufferGeometry,
+  maxNormalY = -0.92,
+): THREE.BufferGeometry {
+  const source = geometry.index ? geometry.toNonIndexed() : geometry
+  const position = source.attributes.position
+  let normals = source.attributes.normal as THREE.BufferAttribute | undefined
+  const colors = source.attributes.color
+  if (!normals) {
+    source.computeVertexNormals()
+    normals = source.attributes.normal as THREE.BufferAttribute
+  }
+
+  const keptPositions: number[] = []
+  const keptNormals: number[] = []
+  const keptColors: number[] = []
+
+  for (let i = 0; i < position.count; i += 3) {
+    for (let v = 0; v < 3; v++) {
+      capNormalScratch[v]!.fromBufferAttribute(normals, i + v)
+    }
+    const avgNy =
+      (capNormalScratch[0]!.y +
+        capNormalScratch[1]!.y +
+        capNormalScratch[2]!.y) /
+      3
+    if (avgNy <= maxNormalY) continue
+
+    for (let v = 0; v < 3; v++) {
+      const idx = i + v
+      keptPositions.push(
+        position.getX(idx),
+        position.getY(idx),
+        position.getZ(idx),
+      )
+      keptNormals.push(normals.getX(idx), normals.getY(idx), normals.getZ(idx))
+      if (colors) {
+        keptColors.push(colors.getX(idx), colors.getY(idx), colors.getZ(idx))
+      }
+    }
+  }
+
+  const next = new THREE.BufferGeometry()
+  next.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(keptPositions, 3),
+  )
+  next.setAttribute("normal", new THREE.Float32BufferAttribute(keptNormals, 3))
+  if (colors && keptColors.length > 0) {
+    next.setAttribute("color", new THREE.Float32BufferAttribute(keptColors, 3))
+  }
+  next.computeBoundingSphere()
+  if (source !== geometry) source.dispose()
+  return next
+}
+
 /** Thin floor pick surface — glass extrude does not participate in raycasts. */
 export function createZoneFloorPickGeometry(zone: ZoneNode): THREE.ShapeGeometry | null {
   const shape = buildZoneShape(zone)
   if (!shape) return null
-  return new THREE.ShapeGeometry(shape)
+  const geo = new THREE.ShapeGeometry(shape)
+  geo.computeVertexNormals()
+  return geo
+}
+
+function ensureUpwardFacingNormals(geo: THREE.BufferGeometry) {
+  geo.computeVertexNormals()
+  const normals = geo.attributes.normal as THREE.BufferAttribute | undefined
+  if (!normals || normals.count === 0) return
+  let sumY = 0
+  for (let i = 0; i < normals.count; i++) sumY += normals.getY(i)
+  if (sumY < 0) {
+    geo.scale(1, 1, -1)
+    geo.computeVertexNormals()
+  }
+}
+
+/** 구역 바닥 — 월드 XZ 평면(+Y 법선)에 배치된 시각·pick 공용 geometry */
+export function createZoneFloorWorldGeometry(zone: ZoneNode): THREE.BufferGeometry | null {
+  const shape = buildZoneShape(zone)
+  if (!shape) return null
+  const geo = new THREE.ShapeGeometry(shape)
+  geo.rotateX(-Math.PI / 2)
+  const baseY = skeletonCenterToThreeBase(zone.geometry.center, zone.geometry.height)
+  geo.translate(0, baseY + FLOOR_SURFACE_LIFT, 0)
+  ensureUpwardFacingNormals(geo)
+  return geo
 }
 
 export type ZoneGlassMaterialOptions = {
@@ -180,7 +266,11 @@ export function createZoneShellWorldGeometry(
   geo.applyMatrix4(shellMatrix)
   base.dispose()
 
-  return openRoof ? stripUpwardCapFaces(geo) : geo
+  if (!openRoof) return geo
+  const cut = stripUpwardCapFaces(geo, 0.985)
+  if (cut !== geo) geo.dispose()
+  cut.computeVertexNormals()
+  return cut
 }
 
 export function zoneMeshTransform(zone: ZoneNode): {
@@ -197,7 +287,7 @@ export function zoneMeshTransform(zone: ZoneNode): {
 export function createZoneOutlineGeometry(zone: ZoneNode): THREE.BufferGeometry | null {
   const { coordinates, center, height } = zone.geometry
   if (coordinates.length < 2) return null
-  const y = skeletonCenterToThreeBase(center, height) + 0.02
+  const y = skeletonCenterToThreeBase(center, height) + FLOOR_SURFACE_LIFT + 0.01
   const points: THREE.Vector3[] = []
   for (const [x, planY] of coordinates) {
     points.push(new THREE.Vector3(x, y, planY))

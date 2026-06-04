@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   collectBuildingInspectionHistory,
   formatInspectionDate,
+  inspectionRecordDetailLine,
+  inspectionRecordTitle,
   type InspectionRecord,
 } from "@/lib/scene-graph-skeleton/inspection-history";
 import type {
@@ -85,8 +87,8 @@ export function ViewerInspectionHistoryPanel({
             </div>
 
             <p className={cn(viewerType.muted, "border-b border-red-900/10 px-4 py-3")}>
-              scene graph의 건물·시설 점검 이력입니다. 시설 행을 누르면 해당 시설을 선택하고,
-              왼쪽 패널에서 관리 기록을 볼 수 있습니다.
+              scene graph의 점검 이력(date, result, inspector, details)입니다. 시설 행을
+              누르면 해당 시설을 선택하고, 왼쪽 패널에서 관리 기록을 볼 수 있습니다.
             </p>
 
             <ScrollArea className="min-h-0 flex-1">
@@ -98,7 +100,7 @@ export function ViewerInspectionHistoryPanel({
                 ) : (
                   records.map((record) => (
                     <HistoryRow
-                      key={record.id}
+                      key={`${record.assetId ?? "building"}-${record.id}`}
                       record={record}
                       selected={
                         Boolean(
@@ -136,11 +138,18 @@ function HistoryRow({
   const content = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-zinc-900">{record.action}</p>
+        <p className="text-sm font-semibold text-zinc-900">
+          {inspectionRecordTitle(record)}
+        </p>
         <time className={cn(viewerType.mono, "shrink-0 text-zinc-500")}>
           {formatInspectionDate(record.date)}
         </time>
       </div>
+      {inspectionRecordDetailLine(record) ? (
+        <p className={cn(viewerType.muted, "mt-1 text-zinc-700")}>
+          {inspectionRecordDetailLine(record)}
+        </p>
+      ) : null}
       <p className={cn(viewerType.muted, "mt-1")}>{record.result}</p>
       {record.assetLabel ? (
         <p className={cn(viewerType.mono, "mt-1.5 text-zinc-500")}>{record.assetLabel}</p>

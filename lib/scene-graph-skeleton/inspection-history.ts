@@ -15,34 +15,77 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function parseInspectionHistory(raw: unknown): AssetInspectionRecord[] | undefined {
+function pickAction(item: Record<string, unknown>): string | null {
+  if (typeof item.action === "string" && item.action.trim()) {
+    return item.action.trim();
+  }
+  if (typeof item.details === "string" && item.details.trim()) {
+    return item.details.trim();
+  }
+  return null;
+}
+
+/**
+ * scene_graph `inspection_history` 배열 파싱.
+ * - 레거시: id, date, action, result, inspector
+ * - sg_3.json: date, result, inspector, details (id/action 없음)
+ */
+export function parseInspectionHistory(
+  raw: unknown,
+  options?: { idPrefix?: string },
+): AssetInspectionRecord[] | undefined {
   if (!Array.isArray(raw)) {
     return undefined;
   }
 
+  const prefix = options?.idPrefix ?? "inspection";
   const out: AssetInspectionRecord[] = [];
 
-  for (const item of raw) {
+  for (let index = 0; index < raw.length; index++) {
+    const item = raw[index];
     if (!isRecord(item)) continue;
-    if (
-      typeof item.id !== "string" ||
-      typeof item.date !== "string" ||
-      typeof item.action !== "string" ||
-      typeof item.result !== "string"
-    ) {
+    if (typeof item.date !== "string" || typeof item.result !== "string") {
       continue;
     }
 
+    const action = pickAction(item);
+    if (!action) continue;
+
+    const id =
+      typeof item.id === "string" && item.id.length > 0
+        ? item.id
+        : `${prefix}-${item.date}-${index}`;
+
+    const details =
+      typeof item.details === "string" && item.details.trim()
+        ? item.details.trim()
+        : undefined;
+
     out.push({
-      id: item.id,
+      id,
       date: item.date,
-      action: item.action,
+      action,
       result: item.result,
       ...(typeof item.inspector === "string" ? { inspector: item.inspector } : {}),
+      ...(details ? { details } : {}),
     });
   }
 
   return out.length > 0 ? out : undefined;
+}
+
+/** 패널 제목 — action 우선, sg_3는 details 요약 */
+export function inspectionRecordTitle(record: AssetInspectionRecord): string {
+  return record.action;
+}
+
+/** action과 다를 때만 상세 줄 표시 */
+export function inspectionRecordDetailLine(
+  record: AssetInspectionRecord,
+): string | null {
+  const details = record.details?.trim();
+  if (!details || details === record.action) return null;
+  return details;
 }
 
 function assetLabel(asset: FacilityAssetRef) {
@@ -50,8 +93,9 @@ function assetLabel(asset: FacilityAssetRef) {
 }
 
 export function inspectionRecordsForAsset(asset: FacilityAssetRef): InspectionRecord[] {
-  return (asset.inspection_history ?? []).map((record) => ({
+  return (asset.inspection_history ?? []).map((record, index) => ({
     ...record,
+    id: `${asset.id}-${record.id}-${index}`,
     assetId: asset.id,
     assetLabel: assetLabel(asset),
     zoneName: asset.zoneName,
@@ -63,7 +107,10 @@ export function collectBuildingInspectionHistory(
   assets: FacilityAssetRef[],
   buildingRecords?: AssetInspectionRecord[],
 ): InspectionRecord[] {
-  const fromBuilding = (buildingRecords ?? []).map((record) => ({ ...record }));
+  const fromBuilding = (buildingRecords ?? []).map((record, index) => ({
+    ...record,
+    id: `building-${record.id}-${index}`,
+  }));
   const fromAssets = assets.flatMap(inspectionRecordsForAsset);
 
   return [...fromBuilding, ...fromAssets].sort((a, b) => b.date.localeCompare(a.date));

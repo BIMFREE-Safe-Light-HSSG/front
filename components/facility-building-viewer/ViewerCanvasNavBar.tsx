@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 type ViewerCanvasNavBarProps = {
   layerVisibility: ViewerLayerVisibility;
   shellDisplay: ViewerShellDisplay;
+  /** false면 시설 레이어 토글 숨김 (소방 뷰) */
+  showFacilityToggle?: boolean;
   hasSelection: boolean;
   onResetView: () => void;
   onTopView: () => void;
@@ -100,6 +102,7 @@ function LayerToggle({
 export function ViewerCanvasNavBar({
   layerVisibility,
   shellDisplay,
+  showFacilityToggle = true,
   hasSelection,
   onResetView,
   onTopView,
@@ -148,12 +151,14 @@ export function ViewerCanvasNavBar({
             icon={Box}
             onClick={onToggleShell}
           />
-          <LayerToggle
-            active={layerVisibility.facility}
-            label="시설"
-            icon={CircleDot}
-            onClick={onToggleFacility}
-          />
+          {showFacilityToggle ? (
+            <LayerToggle
+              active={layerVisibility.facility}
+              label="시설"
+              icon={CircleDot}
+              onClick={onToggleFacility}
+            />
+          ) : null}
           <LayerToggle
             active={layerVisibility.structure}
             label="구조"

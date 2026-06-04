@@ -31,6 +31,8 @@ export type AssetSpotProps = {
   enlargedPick?: boolean;
   /** SceneAssetPick이 클릭·호버 담당 */
   unifiedPick?: boolean;
+  /** 반투명 shell일 때 문·창 구조물 강조 */
+  xrayShell?: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
   onContextPick?: (target: SceneContextTarget) => void;

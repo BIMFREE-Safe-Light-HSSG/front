@@ -1,16 +1,17 @@
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import * as THREE from "three";
 
-import {
-  createZoneFloorPickGeometry,
-  zoneMeshTransform,
-} from "./zone-geometry";
+import { createZoneFloorWorldGeometry } from "./zone-geometry";
 import type { ZoneNode } from "./types";
 
-const matrixScratch = new THREE.Matrix4();
-const quaternionScratch = new THREE.Quaternion();
-const positionScratch = new THREE.Vector3();
-const scaleScratch = new THREE.Vector3(1, 1, 1);
+/** 벽 shell(ZONE_PALETTE)과 구분되는 밝은 바닥 톤 */
+const FLOOR_PALETTE = [
+  0xf8fafc, 0xf1f5f9, 0xfaf8f5, 0xf0f7f4, 0xfaf5f8, 0xf3f6fb, 0xf9f7f0, 0xf2f4fa,
+] as const;
+
+export function resolveZoneFloorColor(index: number): THREE.Color {
+  return new THREE.Color(FLOOR_PALETTE[index % FLOOR_PALETTE.length]!);
+}
 
 /** 구역 폴리곤 바닥을 한 장의 슬래브로 merge */
 export function buildMergedFloorGeometry(
@@ -18,22 +19,22 @@ export function buildMergedFloorGeometry(
 ): THREE.BufferGeometry | null {
   const parts: THREE.BufferGeometry[] = [];
 
-  for (const zone of zones) {
-    const floor = createZoneFloorPickGeometry(zone);
-    if (!floor) continue;
+  for (let index = 0; index < zones.length; index++) {
+    const zone = zones[index]!;
+    const geo = createZoneFloorWorldGeometry(zone);
+    if (!geo) continue;
 
-    const transform = zoneMeshTransform(zone);
-    quaternionScratch.setFromEuler(transform.rotation);
-    matrixScratch.compose(
-      transform.position,
-      quaternionScratch,
-      scaleScratch,
-    );
+    const color = resolveZoneFloorColor(index);
+    const positionCount = geo.attributes.position.count;
+    const colors = new Float32Array(positionCount * 3);
+    for (let i = 0; i < positionCount; i++) {
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+    }
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-    const geo = floor.clone();
-    geo.applyMatrix4(matrixScratch);
     parts.push(geo);
-    floor.dispose();
   }
 
   if (parts.length === 0) return null;
@@ -44,8 +45,12 @@ export function buildMergedFloorGeometry(
 }
 
 export const MERGED_FLOOR_MATERIAL = new THREE.MeshStandardMaterial({
-  color: 0x1e293b,
-  metalness: 0.12,
-  roughness: 0.88,
-  side: THREE.DoubleSide,
+  vertexColors: true,
+  color: 0xffffff,
+  metalness: 0.06,
+  roughness: 0.78,
+  emissive: 0xf1f5f9,
+  emissiveIntensity: 0.06,
+  side: THREE.FrontSide,
+  depthWrite: true,
 });

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ASSET_STATUS_LABELS, assetClassStyle } from "@/lib/scene-graph-skeleton/assets";
 import {
   formatInspectionDate,
+  inspectionRecordDetailLine,
+  inspectionRecordTitle,
   inspectionRecordsForAsset,
 } from "@/lib/scene-graph-skeleton/inspection-history";
 import type { FacilityAssetRef } from "@/lib/scene-graph-skeleton/types";
@@ -99,7 +101,14 @@ export function AssetDetailPanel({ asset, onClose, className }: AssetDetailPanel
                 transition={{ delay: 0.08 + index * 0.06 }}
                 className="rounded-2xl border border-red-900/10 bg-white/70 px-3 py-2.5 text-xs shadow-sm"
               >
-                <p className="font-medium text-zinc-800">{row.action}</p>
+                <p className="font-medium text-zinc-800">
+                  {inspectionRecordTitle(row)}
+                </p>
+                {inspectionRecordDetailLine(row) ? (
+                  <p className="mt-0.5 text-xs text-zinc-600">
+                    {inspectionRecordDetailLine(row)}
+                  </p>
+                ) : null}
                 <p className="text-muted-foreground mt-0.5">
                   {formatInspectionDate(row.date)} · {row.result}
                 </p>

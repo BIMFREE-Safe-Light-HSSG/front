@@ -8,11 +8,15 @@ import demoSkeleton from "@/lib/facility-demo/scene-graph-skeleton.json";
 
 import demoSkeleton2 from "@/lib/facility-demo/scene_graph_2.json";
 
+import demoSkeleton3 from "@/lib/facility-demo/sg_3.json";
+
 
 
 export const DEMO_FACILITY_BUILDING_ID = "demo-bld-001";
 
 export const DEMO_FACILITY_BUILDING_ID_2 = "demo-bld-002";
+
+export const DEMO_FACILITY_BUILDING_ID_3 = "demo-bld-003";
 
 
 
@@ -73,6 +77,20 @@ const DEMO_BUILDINGS: DemoBuildingDef[] = [
     address: "서울특별시 중구 (데모 · scene_graph_2)",
 
     skeleton: demoSkeleton2 as DemoSkeletonFile,
+
+  },
+
+  {
+
+    id: DEMO_FACILITY_BUILDING_ID_3,
+
+    graphDataId: "demo-graph-003",
+
+    name: "BLD_001 (sg_3 · 점검 이력)",
+
+    address: "서울특별시 중구 (데모 · sg_3.json)",
+
+    skeleton: demoSkeleton3 as DemoSkeletonFile,
 
   },
 

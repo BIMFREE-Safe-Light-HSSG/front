@@ -3,7 +3,8 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, type RefObject } from "react";
-import type * as THREE from "three";
+import type { InstancedMesh } from "three";
+import * as THREE from "three";
 
 import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import { findZoneForAssetPosition } from "@/lib/scene-graph-skeleton/assets";
@@ -14,14 +15,17 @@ import {
   buildMergedFloorGeometry,
   MERGED_FLOOR_MATERIAL,
 } from "@/lib/scene-graph-skeleton/zone-floor-merge";
+import { createZoneOutlineGeometry } from "@/lib/scene-graph-skeleton/zone-geometry";
 import type { Vec3, ZoneNode } from "@/lib/scene-graph-skeleton/types";
 
 type MergedBuildingSlabProps = {
   zones: ZoneNode[];
+  /** 천장 OFF — 바닥 경계선으로 벽·구역 대비 */
+  openRoof?: boolean;
   /** 반투명 shell일 때만 slab에서 시설 pick raycast */
   xrayShell?: boolean;
   facilityPickAssets?: FacilityAssetRef[];
-  facilityPickMeshRef?: RefObject<THREE.InstancedMesh | null>;
+  facilityPickMeshRef?: RefObject<InstancedMesh | null>;
   placementMode?: boolean;
   onSelectZone?: (zoneId: string) => void;
   onSelectAsset?: (assetId: string) => void;
@@ -30,8 +34,16 @@ type MergedBuildingSlabProps = {
 };
 
 /** shell 대신 바닥에서 구역 클릭·우클릭 (shell은 pick 없음) */
+const FLOOR_EDGE_MATERIAL = new THREE.LineBasicMaterial({
+  color: 0x64748b,
+  transparent: true,
+  opacity: 0.85,
+  depthTest: true,
+});
+
 export function MergedBuildingSlab({
   zones,
+  openRoof = false,
   xrayShell = false,
   facilityPickAssets = [],
   facilityPickMeshRef,
@@ -118,21 +130,38 @@ export function MergedBuildingSlab({
   if (!geometry) return null;
 
   return (
-    <mesh
-      geometry={geometry}
-      material={MERGED_FLOOR_MATERIAL}
-      renderOrder={0}
-      receiveShadow
-      onClick={handleClick}
-      onContextMenu={onContextPick ? handleContextMenu : undefined}
-      onPointerOver={(e) => {
-        if (placementMode) return;
-        e.stopPropagation();
-        document.body.style.cursor = "pointer";
-      }}
-      onPointerOut={() => {
-        if (!placementMode) document.body.style.cursor = "auto";
-      }}
-    />
+    <group>
+      <mesh
+        geometry={geometry}
+        material={MERGED_FLOOR_MATERIAL}
+        renderOrder={2}
+        receiveShadow
+        onClick={handleClick}
+        onContextMenu={onContextPick ? handleContextMenu : undefined}
+        onPointerOver={(e) => {
+          if (placementMode) return;
+          e.stopPropagation();
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          if (!placementMode) document.body.style.cursor = "auto";
+        }}
+      />
+      {openRoof
+        ? zones.map((zone) => {
+            const outline = createZoneOutlineGeometry(zone);
+            if (!outline) return null;
+            return (
+              <line
+                key={`floor-edge-${zone.id}`}
+                geometry={outline}
+                material={FLOOR_EDGE_MATERIAL}
+                renderOrder={3}
+                raycast={() => {}}
+              />
+            );
+          })
+        : null}
+    </group>
   );
 }

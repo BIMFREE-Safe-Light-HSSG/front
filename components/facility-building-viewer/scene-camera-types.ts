@@ -1,7 +1,7 @@
 import type { CameraViewPreset } from "@/lib/scene-graph-skeleton/camera-views"
 
 export type ViewerLayerVisibility = {
-  /** 구역 shell·바닥·윤곽 */
+  /** 구역 shell·통합 바닥 */
   shell: boolean
   /** 시설 핀·instanced 마커 */
   facility: boolean

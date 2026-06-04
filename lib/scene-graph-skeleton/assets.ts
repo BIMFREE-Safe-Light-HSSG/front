@@ -81,7 +81,9 @@ function normalizeAsset(raw: SkeletonAsset): SkeletonAsset | null {
     (raw.type === "ASSET" ? "시설" : raw.type)?.trim() ||
     "기타";
 
-  const inspection_history = parseInspectionHistory(raw.inspection_history);
+  const inspection_history = parseInspectionHistory(raw.inspection_history, {
+    idPrefix: raw.id,
+  });
 
   return {
     id: raw.id,

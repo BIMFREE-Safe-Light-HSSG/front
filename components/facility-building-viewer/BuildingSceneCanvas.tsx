@@ -14,7 +14,6 @@ import { AssetSpot } from "@/components/facility-building-viewer/AssetSpot";
 import { FireIncidentsInstanced } from "@/components/facility-building-viewer/FireIncidentsInstanced";
 import { AdaptiveSceneGrid } from "@/components/facility-building-viewer/AdaptiveSceneGrid";
 import { MergedBuildingSlab } from "@/components/facility-building-viewer/MergedBuildingSlab";
-import { MergedZoneRim } from "@/components/facility-building-viewer/MergedZoneRim";
 import { MergedZoneShell } from "@/components/facility-building-viewer/MergedZoneShell";
 import {
   SceneEnvironment,
@@ -366,7 +365,7 @@ function ZonePanel({
       {showMesh && selected && glowLine ? (
         <primitive object={glowLine} renderOrder={3} />
       ) : null}
-      {floorPick ? (
+      {floorPick && !useMergedZoneShell ? (
         <mesh
           ref={floorPickRef}
           geometry={floorPick}
@@ -374,7 +373,7 @@ function ZonePanel({
           position={transform.position}
           rotation={transform.rotation}
           renderOrder={0}
-          {...(useMergedZoneShell ? {} : pickHandlers)}
+          {...pickHandlers}
         />
       ) : null}
     </group>
@@ -423,6 +422,9 @@ function SceneContent({
   const showStructure = layerVisibility.structure;
   const showFires = layerVisibility.fires ?? true;
   const shellSlabVisible = showZoneMeshes && zones.length > 0;
+  /** 반투명 shell일 때만 시설(문·창 제외) 클릭·우클릭 pick */
+  const facilityAssetPickEnabled =
+    showFacility && shellDisplay.transparent;
 
   const assetMarkerState = useMemo(
     () => ({
@@ -519,20 +521,19 @@ function SceneContent({
           {shellSlabVisible ? (
             <MergedBuildingSlab
               zones={zones}
+              openRoof={shellDisplay.openRoof}
               xrayShell={shellDisplay.transparent}
-              facilityPickAssets={showFacility ? facilityPickAssets : []}
+              facilityPickAssets={
+                facilityAssetPickEnabled ? facilityPickAssets : []
+              }
               facilityPickMeshRef={facilityPickMeshRef}
               placementMode={placementMode}
               onSelectZone={(id) => onSelectZone(id)}
-              onSelectAsset={showFacility ? onSelectAsset : undefined}
+              onSelectAsset={
+                facilityAssetPickEnabled ? onSelectAsset : undefined
+              }
               onPlacementPick={onPlacementPick}
               onContextPick={onContextPick}
-            />
-          ) : null}
-          {shellSlabVisible ? (
-            <MergedZoneRim
-              zones={zones}
-              emergency={sceneTheme === "emergency"}
             />
           ) : null}
           {useMergedZoneShell ? (
@@ -576,13 +577,15 @@ function SceneContent({
             searchHighlightActive={searchHighlightActive}
             highlightAssetIds={highlightAssetIds}
           />
-          <SceneAssetPick
-            ref={facilityPickMeshRef}
-            assets={facilityPickAssets}
-            xrayShell={shellDisplay.transparent}
-            onSelect={onSelectAsset}
-            onContextPick={onContextPick}
-          />
+          {facilityAssetPickEnabled ? (
+            <SceneAssetPick
+              ref={facilityPickMeshRef}
+              assets={facilityPickAssets}
+              xrayShell
+              onSelect={onSelectAsset}
+              onContextPick={onContextPick}
+            />
+          ) : null}
           {animatedAssets.map((asset) => {
             const aHighlighted = highlightAssetIds.has(asset.id);
             const aDimmed = searchHighlightActive && !aHighlighted;
@@ -619,6 +622,7 @@ function SceneContent({
                 hovered={hoveredAssetId === asset.id}
                 highlighted={aHighlighted}
                 dimmed={aDimmed}
+                xrayShell={shellDisplay.transparent}
                 onSelect={onSelectAsset}
                 onHover={onHoverAsset}
                 onContextPick={onContextPick}

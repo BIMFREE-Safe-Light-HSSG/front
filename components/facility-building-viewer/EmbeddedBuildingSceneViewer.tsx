@@ -2,7 +2,18 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ClipboardList, Database, Flame, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardList,
+  Database,
+  DoorOpen,
+  Flame,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { AssetDetailPanel } from "@/components/facility-building-viewer/AssetDetailPanel";
 import {
@@ -62,7 +73,10 @@ import {
   zoneIdsContainingFireIncidents,
 } from "@/lib/scene-graph-skeleton/assets";
 import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
-import { filterAssetsForViewerMode } from "@/lib/scene-graph-skeleton/structural-assets";
+import {
+  filterAssetsForViewerMode,
+  isStructuralAssetClass,
+} from "@/lib/scene-graph-skeleton/structural-assets";
 import {
   DEFAULT_VIEWER_SEARCH_FILTERS,
   filterAssetsForViewerDisplay,
@@ -169,7 +183,9 @@ function normalizeAsset(raw: unknown): SkeletonAsset | null {
     ? (raw.status as AssetStatus)
     : undefined;
 
-  const inspection_history = parseInspectionHistory(raw.inspection_history);
+  const inspection_history = parseInspectionHistory(raw.inspection_history, {
+    idPrefix: raw.id,
+  });
 
   return {
     id: raw.id,
@@ -384,6 +400,7 @@ export function EmbeddedBuildingSceneViewer({
 }: EmbeddedBuildingSceneViewerProps) {
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
   const [selectedFireId, setSelectedFireId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -517,11 +534,30 @@ export function EmbeddedBuildingSceneViewer({
   }, [assets, enableFacilityTools, searchFilters]);
 
   useEffect(() => {
-    if (!enableFacilityTools || !selectedAssetId) return;
-    if (!assets.some((asset) => asset.id === selectedAssetId)) {
+    if (!selectedAssetId) return;
+    const asset = assets.find((item) => item.id === selectedAssetId);
+    if (!asset) {
+      setSelectedAssetId(null);
+      return;
+    }
+    if (!enableFacilityTools && !isStructuralAssetClass(asset.class)) {
       setSelectedAssetId(null);
     }
   }, [assets, selectedAssetId, enableFacilityTools]);
+
+  const canvasSelectedAssetId = useMemo(() => {
+    if (!selectedAssetId) return null;
+    if (enableFacilityTools) return selectedAssetId;
+    const asset = assets.find((item) => item.id === selectedAssetId);
+    return asset && isStructuralAssetClass(asset.class) ? selectedAssetId : null;
+  }, [enableFacilityTools, selectedAssetId, assets]);
+
+  const canvasHoveredAssetId = useMemo(() => {
+    if (!hoveredAssetId) return null;
+    if (enableFacilityTools) return hoveredAssetId;
+    const asset = assets.find((item) => item.id === hoveredAssetId);
+    return asset && isStructuralAssetClass(asset.class) ? hoveredAssetId : null;
+  }, [enableFacilityTools, hoveredAssetId, assets]);
 
   const searchFocusBounds = useMemo(() => {
     if (!enableFacilityTools || !searchFiltersActive) return null;
@@ -570,15 +606,42 @@ export function EmbeddedBuildingSceneViewer({
 
   const handleSelectAsset = useCallback(
     (id: string) => {
+      const asset = assets.find((item) => item.id === id);
+      if (!asset) return;
+      if (!enableFacilityTools && !isStructuralAssetClass(asset.class)) return;
+
       setSelectedAssetId(id);
       setSelectedFireId(null);
-      setSidePanelOpen(true);
-      setSearchOpen(false);
-      const asset = assets.find((item) => item.id === id);
-      if (asset?.zoneId) setSelectedZoneId(asset.zoneId);
-      pushCamera({ type: "focus-asset", assetId: id, intensity: "subtle" });
+      if (enableFacilityTools) {
+        setSidePanelOpen(true);
+        setSearchOpen(false);
+      }
+      if (asset.zoneId) setSelectedZoneId(asset.zoneId);
+      pushCamera({
+        type: "focus-asset",
+        assetId: id,
+        intensity: enableFacilityTools ? "subtle" : "medium",
+      });
     },
-    [assets, pushCamera],
+    [assets, enableFacilityTools, pushCamera],
+  );
+
+  const handleHoverAsset = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        setHoveredAssetId(null);
+        return;
+      }
+      if (enableFacilityTools) {
+        setHoveredAssetId(id);
+        return;
+      }
+      const asset = assets.find((item) => item.id === id);
+      if (asset && isStructuralAssetClass(asset.class)) {
+        setHoveredAssetId(id);
+      }
+    },
+    [assets, enableFacilityTools],
   );
 
   const handleSelectSearchResult = useCallback(
@@ -1031,8 +1094,9 @@ export function EmbeddedBuildingSceneViewer({
         </div>
       ) : null}
 
-      {enableFacilityTools ? (
+      {enableFacilityTools || showFireLayer ? (
         <ViewerCanvasNavBar
+          showFacilityToggle={enableFacilityTools}
           layerVisibility={layerVisibility}
           shellDisplay={shellDisplay}
           hasSelection={hasSelection}
@@ -1040,8 +1104,12 @@ export function EmbeddedBuildingSceneViewer({
           onTopView={() => pushCamera({ type: "preset", preset: "top" })}
           onIsoView={() => pushCamera({ type: "preset", preset: "iso" })}
           onFocusSelection={() => {
-            if (selectedAssetId) {
-              pushCamera({ type: "focus-asset", assetId: selectedAssetId, intensity: "medium" });
+            if (canvasSelectedAssetId) {
+              pushCamera({
+                type: "focus-asset",
+                assetId: canvasSelectedAssetId,
+                intensity: "medium",
+              });
             } else if (selectedZoneId) {
               pushCamera({ type: "focus-zone", zoneId: selectedZoneId, intensity: "medium" });
             }
@@ -1067,49 +1135,6 @@ export function EmbeddedBuildingSceneViewer({
             setShellDisplay((value) => ({ ...value, openRoof: !value.openRoof }))
           }
         />
-      ) : showFireLayer ? (
-        <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-20 flex justify-center gap-2 px-3">
-          <button
-            type="button"
-            onClick={() => setLayerVisibility((value) => ({ ...value, fires: !value.fires }))}
-            className={cn(
-              viewerGlass.overlayLight,
-              "rounded-full px-4 py-2 text-[10px] font-semibold tracking-wide text-red-900 shadow-lg",
-            )}
-          >
-            화재 표시 {layerVisibility.fires ? "ON" : "OFF"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setShellDisplay((value) => ({ ...value, transparent: !value.transparent }))
-            }
-            className={cn(
-              viewerGlass.overlayLight,
-              "rounded-full px-4 py-2 text-[10px] font-semibold tracking-wide shadow-lg",
-              shellDisplay.transparent
-                ? "bg-red-950 text-white"
-                : "text-red-900",
-            )}
-          >
-            반투명 {shellDisplay.transparent ? "ON" : "OFF"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setShellDisplay((value) => ({ ...value, openRoof: !value.openRoof }))
-            }
-            className={cn(
-              viewerGlass.overlayLight,
-              "rounded-full px-4 py-2 text-[10px] font-semibold tracking-wide shadow-lg",
-              shellDisplay.openRoof
-                ? "bg-red-950 text-white"
-                : "text-red-900",
-            )}
-          >
-            천장 OFF {shellDisplay.openRoof ? "ON" : "OFF"}
-          </button>
-        </div>
       ) : null}
 
       {enableFacilityTools ? (
@@ -1161,6 +1186,34 @@ export function EmbeddedBuildingSceneViewer({
           </motion.aside>
         ) : null}
       </AnimatePresence>
+
+      {!enableFacilityTools && selectedAsset && isStructuralAssetClass(selectedAsset.class) ? (
+        <div
+          className={cn(
+            viewerGlass.overlayLight,
+            "pointer-events-auto absolute bottom-44 left-3 z-30 flex max-w-[min(280px,calc(100%-2rem))] items-center gap-2 rounded-2xl px-3 py-2.5 shadow-xl",
+          )}
+        >
+          <DoorOpen className="h-4 w-4 shrink-0 text-red-900" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-bold text-red-950">
+              {selectedAsset.class === "door" ? "문" : "창"}
+              {selectedAsset.zoneName ? ` · ${selectedAsset.zoneName}` : ""}
+            </p>
+            {selectedAsset.name ? (
+              <p className="truncate text-[10px] text-zinc-500">{selectedAsset.name}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            aria-label="구조 선택 해제"
+            className="rounded-lg p-1 text-zinc-400 hover:bg-red-50 hover:text-red-900"
+            onClick={() => setSelectedAssetId(null)}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       {enableFacilityTools && searchFiltersActive ? (
         <div className="pointer-events-none absolute left-5 top-20 z-10">
@@ -1259,8 +1312,8 @@ export function EmbeddedBuildingSceneViewer({
         zones={zones}
         assets={canvasAssets}
         selectedZoneId={selectedZoneId}
-        selectedAssetId={enableFacilityTools ? selectedAssetId : null}
-        hoveredAssetId={null}
+        selectedAssetId={canvasSelectedAssetId}
+        hoveredAssetId={canvasHoveredAssetId}
         placementMode={firePlacementActive}
         draftPosition={firePlacementActive ? draftFirePosition : null}
         draftClass="화재"
@@ -1286,7 +1339,8 @@ export function EmbeddedBuildingSceneViewer({
             setSelectedFireId(null);
           }
         }}
-        onSelectAsset={enableFacilityTools ? handleSelectAsset : () => {}}
+        onSelectAsset={handleSelectAsset}
+        onHoverAsset={handleHoverAsset}
         onContextPick={enableFacilityTools ? handleCanvasContextPick : undefined}
         onClearSelection={() => {
           if (firePlacementActive) return;

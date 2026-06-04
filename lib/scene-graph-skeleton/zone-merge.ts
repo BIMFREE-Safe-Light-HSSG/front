@@ -5,6 +5,7 @@ import {
   createZoneExtrudeGeometry,
   FIREFIGHTER_FIRE_ZONE_COLOR,
   FIREFIGHTER_NEUTRAL_ZONE_COLOR,
+  stripDownwardCapFaces,
   stripUpwardCapFaces,
   zoneAccentColor,
   zoneMeshTransform,
@@ -27,7 +28,10 @@ const positionScratch = new THREE.Vector3();
 const quaternionScratch = new THREE.Quaternion();
 const scaleScratch = new THREE.Vector3(1, 1, 1);
 
-export function resolveZoneShellColor(state: ZoneShellVisualState): THREE.Color {
+export function resolveZoneShellColor(
+  state: ZoneShellVisualState,
+  options?: { openRoof?: boolean },
+): THREE.Color {
   const {
     index,
     selected,
@@ -61,6 +65,15 @@ export function resolveZoneShellColor(state: ZoneShellVisualState): THREE.Color 
   if (dimmed) shellColorScratch.multiplyScalar(0.28);
   else if (!selected && !highlighted) shellColorScratch.multiplyScalar(0.82);
 
+  // 천장 OFF(컷어웨이): 바닥(밝은 중성색)과 벽면 대비 강화
+  if (options?.openRoof && !dimmed && !highlighted) {
+    if (firefighterZoneView && !isFireZone) {
+      shellColorScratch.multiplyScalar(selected ? 0.92 : 0.8);
+    } else if (!firefighterZoneView) {
+      shellColorScratch.multiplyScalar(selected ? 0.94 : 0.78);
+    }
+  }
+
   return shellColorScratch;
 }
 
@@ -89,7 +102,7 @@ export function buildMergedZoneShellGeometry(
     };
 
     const geo = base.clone();
-    const color = resolveZoneShellColor(visual);
+    const color = resolveZoneShellColor(visual, { openRoof });
     const positionCount = geo.attributes.position.count;
     const colors = new Float32Array(positionCount * 3);
     for (let i = 0; i < positionCount; i++) {
@@ -107,8 +120,15 @@ export function buildMergedZoneShellGeometry(
       scaleScratch,
     );
     geo.applyMatrix4(matrixScratch);
-    parts.push(openRoof ? stripUpwardCapFaces(geo) : geo);
-    if (openRoof) geo.dispose();
+    let shellGeo: THREE.BufferGeometry = geo;
+    if (openRoof) {
+      shellGeo = stripUpwardCapFaces(shellGeo, 0.985);
+      if (shellGeo !== geo) geo.dispose();
+      shellGeo.computeVertexNormals();
+    }
+    const withoutFloor = stripDownwardCapFaces(shellGeo);
+    if (withoutFloor !== shellGeo) shellGeo.dispose();
+    parts.push(withoutFloor);
     base.dispose();
   }
 
@@ -128,15 +148,17 @@ export const SHARED_ZONE_SHELL_MATERIAL = new THREE.MeshStandardMaterial({
 
 export function createMergedZoneShellMaterial(
   transparent: boolean,
+  openRoof = false,
 ): THREE.MeshStandardMaterial {
-  if (!transparent) return SHARED_ZONE_SHELL_MATERIAL;
+  if (!transparent && !openRoof) return SHARED_ZONE_SHELL_MATERIAL;
+
   return new THREE.MeshStandardMaterial({
     vertexColors: true,
     metalness: 0.08,
     roughness: 0.72,
-    transparent: true,
-    opacity: 0.34,
-    depthWrite: false,
+    transparent,
+    opacity: transparent ? 0.34 : 1,
+    depthWrite: !transparent,
     side: THREE.DoubleSide,
   });
 }

@@ -13,13 +13,16 @@ export type ZoneGeometry = {
 
 export type AssetStatus = "normal" | "inspection_due" | "fault" | "offline"
 
-/** scene_graph 자산 노드의 점검·관리 이력 */
+/** scene_graph 자산 노드의 점검·관리 이력 (sg_3: date/result/inspector/details, id·action 생략 가능) */
 export type AssetInspectionRecord = {
   id: string
   date: string
+  /** 레거시 `action` 또는 sg_3 `details` 요약 */
   action: string
   result: string
   inspector?: string
+  /** sg_3.json 등 상세 설명 */
+  details?: string
 }
 
 export type SkeletonAsset = {

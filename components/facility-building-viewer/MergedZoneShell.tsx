@@ -34,18 +34,25 @@ export function MergedZoneShell({
   );
 
   const material = useMemo(
-    () => createMergedZoneShellMaterial(shellDisplay.transparent),
-    [shellDisplay.transparent],
+    () =>
+      createMergedZoneShellMaterial(
+        shellDisplay.transparent,
+        shellDisplay.openRoof,
+      ),
+    [shellDisplay.transparent, shellDisplay.openRoof],
   );
+
+  const materialOwned =
+    shellDisplay.transparent || shellDisplay.openRoof;
 
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (mesh) mesh.raycast = () => {};
     return () => {
       geometry?.dispose();
-      if (shellDisplay.transparent) material.dispose();
+      if (materialOwned) material.dispose();
     };
-  }, [geometry, material, shellDisplay.transparent]);
+  }, [geometry, material, materialOwned]);
 
   if (!geometry) return null;
 
@@ -54,7 +61,7 @@ export function MergedZoneShell({
       ref={meshRef}
       geometry={geometry}
       material={material}
-      renderOrder={1}
+      renderOrder={shellDisplay.openRoof ? 3 : 1}
     />
   );
 }
