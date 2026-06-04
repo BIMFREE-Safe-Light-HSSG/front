@@ -11,16 +11,20 @@ import {
 } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import { AssetHoverTooltip } from "@/components/facility-building-viewer/AssetHoverTooltip";
 import { ViewerCanvasNavBar } from "@/components/facility-building-viewer/ViewerCanvasNavBar";
+import { ViewerMinimap } from "@/components/facility-building-viewer/ViewerMinimap";
 import { ViewerFireIncidentsPanel } from "@/components/facility-building-viewer/ViewerFireIncidentsPanel";
 import { ViewerInspectionHistoryPanel } from "@/components/facility-building-viewer/ViewerInspectionHistoryPanel";
 import { ViewerSearchPanel } from "@/components/facility-building-viewer/ViewerSearchPanel";
 import {
   DEFAULT_LAYER_VISIBILITY,
-  STRUCTURAL_LAYER_VISIBILITY,
+  DEFAULT_SHELL_DISPLAY,
+  FIREFIGHTER_LAYER_VISIBILITY,
   type CameraCommand,
   type CameraCommandAction,
   type ViewerLayerVisibility,
+  type ViewerShellDisplay,
 } from "@/components/facility-building-viewer/scene-camera-types";
+import { boundsFromSubset } from "@/lib/scene-graph-skeleton/bounds";
 import {
   ViewerCanvasBadge,
   ViewerIconFab,
@@ -63,6 +67,7 @@ import { filterAssetsForViewerMode } from "@/lib/scene-graph-skeleton/structural
 import {
   DEFAULT_VIEWER_SEARCH_FILTERS,
   filterAssetsForViewerDisplay,
+  shouldSearchZones,
   hasActiveViewerSearch,
   highlightSetsFromResults,
   runViewerSearch,
@@ -411,8 +416,10 @@ export function EmbeddedBuildingSceneViewer({
   const firePanelVisible = responseActive || (showFireLayer && !canManageFires && firePanelOpen);
   const [searchFilters, setSearchFilters] = useState<ViewerSearchFilters>(DEFAULT_VIEWER_SEARCH_FILTERS);
   const [layerVisibility, setLayerVisibility] = useState<ViewerLayerVisibility>(
-    enableFacilityTools ? DEFAULT_LAYER_VISIBILITY : STRUCTURAL_LAYER_VISIBILITY,
+    enableFacilityTools ? DEFAULT_LAYER_VISIBILITY : FIREFIGHTER_LAYER_VISIBILITY,
   );
+  const [shellDisplay, setShellDisplay] =
+    useState<ViewerShellDisplay>(DEFAULT_SHELL_DISPLAY);
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null);
 
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -431,18 +438,28 @@ export function EmbeddedBuildingSceneViewer({
     return enableFacilityTools ? results : results.filter((result) => result.kind === "zone");
   }, [zones, assets, searchFilters, enableFacilityTools]);
   const searchFiltersActive = hasActiveViewerSearch(searchFilters);
+  const zoneSearchHighlightActive =
+    searchFiltersActive && shouldSearchZones(searchFilters);
+
   const { zoneIds: highlightZoneIds, assetIds: highlightAssetIds } = useMemo(() => {
-    const sets = highlightSetsFromResults(searchFiltersActive ? searchResults : []);
+    const sets = highlightSetsFromResults(searchFiltersActive ? searchResults : [], {
+      includeZones: zoneSearchHighlightActive,
+    });
     return enableFacilityTools
       ? sets
       : { zoneIds: sets.zoneIds, assetIds: new Set<string>() };
-  }, [searchFiltersActive, searchResults, enableFacilityTools]);
+  }, [searchFiltersActive, searchResults, enableFacilityTools, zoneSearchHighlightActive]);
 
   const canvasLayerVisibility = useMemo(
     () =>
       enableFacilityTools
         ? layerVisibility
-        : { zones: layerVisibility.zones, assets: true, fires: layerVisibility.fires },
+        : {
+            shell: layerVisibility.shell,
+            facility: false,
+            structure: layerVisibility.structure,
+            fires: layerVisibility.fires,
+          },
     [enableFacilityTools, layerVisibility],
   );
 
@@ -510,6 +527,29 @@ export function EmbeddedBuildingSceneViewer({
     }
   }, [canvasAssets, selectedAssetId, enableFacilityTools]);
 
+  const searchFocusBounds = useMemo(() => {
+    if (!enableFacilityTools || !searchFiltersActive) return null;
+    if (highlightAssetIds.size === 0 && highlightZoneIds.size === 0) return null;
+    return boundsFromSubset(
+      zones,
+      canvasAssets,
+      highlightZoneIds,
+      highlightAssetIds,
+    );
+  }, [
+    enableFacilityTools,
+    searchFiltersActive,
+    zones,
+    canvasAssets,
+    highlightZoneIds,
+    highlightAssetIds,
+  ]);
+
+  const searchFocusKey = useMemo(() => {
+    if (!searchFocusBounds) return "";
+    return `${searchFocusBounds.min.join(",")}|${searchFocusBounds.max.join(",")}`;
+  }, [searchFocusBounds]);
+
   const rawNodeCount = sceneGraph?.scene_graph.nodes?.length ?? 0;
   const rawEdgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
   const hasSelection = Boolean(selectedAssetId || selectedZoneId);
@@ -525,6 +565,19 @@ export function EmbeddedBuildingSceneViewer({
     cameraSeqRef.current += 1;
     setCameraCommand({ seq: cameraSeqRef.current, action });
   }, []);
+
+  useEffect(() => {
+    if (!searchFocusKey || !searchFocusBounds) return;
+    const timer = window.setTimeout(() => {
+      pushCamera({
+        type: "focus-bounds",
+        min: searchFocusBounds.min,
+        max: searchFocusBounds.max,
+        intensity: "medium",
+      });
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [searchFocusKey, searchFocusBounds, pushCamera]);
 
   const handleSelectAsset = useCallback(
     (id: string) => {
@@ -920,6 +973,22 @@ export function EmbeddedBuildingSceneViewer({
         }
       }}
     >
+      {zones.length > 0 ? (
+        <ViewerMinimap
+          zones={zones}
+          selectedZoneId={selectedZoneId}
+          highlightZoneIds={highlightZoneIds}
+          onSelectZone={(zoneId) => {
+            if (firePlacementActive) return;
+            setSelectedZoneId(zoneId);
+            setSelectedAssetId(null);
+            setSelectedFireId(null);
+          }}
+          onFocusZone={(zoneId) => {
+            pushCamera({ type: "focus-zone", zoneId, intensity: "medium" });
+          }}
+        />
+      ) : null}
       <div className={viewerGlass.canvasVignette} aria-hidden />
 
       <div
@@ -980,6 +1049,7 @@ export function EmbeddedBuildingSceneViewer({
       {enableFacilityTools ? (
         <ViewerCanvasNavBar
           layerVisibility={layerVisibility}
+          shellDisplay={shellDisplay}
           hasSelection={hasSelection}
           onResetView={() => pushCamera({ type: "preset", preset: "reset" })}
           onTopView={() => pushCamera({ type: "preset", preset: "top" })}
@@ -991,16 +1061,29 @@ export function EmbeddedBuildingSceneViewer({
               pushCamera({ type: "focus-zone", zoneId: selectedZoneId, intensity: "medium" });
             }
           }}
-          onToggleZones={() => setLayerVisibility((value) => ({ ...value, zones: !value.zones }))}
-          onToggleAssets={() => setLayerVisibility((value) => ({ ...value, assets: !value.assets }))}
+          onToggleShell={() =>
+            setLayerVisibility((value) => ({ ...value, shell: !value.shell }))
+          }
+          onToggleFacility={() =>
+            setLayerVisibility((value) => ({ ...value, facility: !value.facility }))
+          }
+          onToggleStructure={() =>
+            setLayerVisibility((value) => ({ ...value, structure: !value.structure }))
+          }
           onToggleFires={
             showFireLayer
               ? () => setLayerVisibility((value) => ({ ...value, fires: !value.fires }))
               : undefined
           }
+          onToggleShellTransparent={() =>
+            setShellDisplay((value) => ({ ...value, transparent: !value.transparent }))
+          }
+          onToggleShellOpenRoof={() =>
+            setShellDisplay((value) => ({ ...value, openRoof: !value.openRoof }))
+          }
         />
       ) : showFireLayer ? (
-        <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
+        <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-20 flex justify-center gap-2 px-3">
           <button
             type="button"
             onClick={() => setLayerVisibility((value) => ({ ...value, fires: !value.fires }))}
@@ -1010,6 +1093,36 @@ export function EmbeddedBuildingSceneViewer({
             )}
           >
             화재 표시 {layerVisibility.fires ? "ON" : "OFF"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setShellDisplay((value) => ({ ...value, transparent: !value.transparent }))
+            }
+            className={cn(
+              viewerGlass.overlayLight,
+              "rounded-full px-4 py-2 text-[10px] font-semibold tracking-wide shadow-lg",
+              shellDisplay.transparent
+                ? "bg-red-950 text-white"
+                : "text-red-900",
+            )}
+          >
+            반투명 {shellDisplay.transparent ? "ON" : "OFF"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setShellDisplay((value) => ({ ...value, openRoof: !value.openRoof }))
+            }
+            className={cn(
+              viewerGlass.overlayLight,
+              "rounded-full px-4 py-2 text-[10px] font-semibold tracking-wide shadow-lg",
+              shellDisplay.openRoof
+                ? "bg-red-950 text-white"
+                : "text-red-900",
+            )}
+          >
+            천장 OFF {shellDisplay.openRoof ? "ON" : "OFF"}
           </button>
         </div>
       ) : null}
@@ -1169,12 +1282,15 @@ export function EmbeddedBuildingSceneViewer({
         selectedFireId={selectedFireId}
         onSelectFire={setSelectedFireId}
         layerVisibility={canvasLayerVisibility}
+        shellDisplay={shellDisplay}
         cameraCommand={cameraCommand}
         searchHighlightActive={searchFiltersActive}
+        zoneSearchHighlightActive={zoneSearchHighlightActive}
         highlightZoneIds={highlightZoneIds}
         highlightAssetIds={highlightAssetIds}
         firefighterZoneView={firefighterZoneView}
         fireZoneIds={fireZoneIds}
+        sceneTheme={isEmergency ? "emergency" : "day"}
         onSelectZone={(id) => {
           if (firePlacementActive) return;
           setSelectedZoneId(id);

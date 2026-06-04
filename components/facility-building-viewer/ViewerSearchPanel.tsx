@@ -73,11 +73,12 @@ export function ViewerSearchPanel({
   const active = hasActiveViewerSearch(filters);
 
   const toggleClass = (assetClass: string) => {
-    const isOnly =
-      filters.assetClasses.length === 1 && filters.assetClasses[0] === assetClass;
+    const next = new Set(filters.assetClasses);
+    if (next.has(assetClass)) next.delete(assetClass);
+    else next.add(assetClass);
     onFiltersChange({
       ...filters,
-      assetClasses: isOnly ? [] : [assetClass],
+      assetClasses: [...next],
       entityType:
         filters.entityType === "zones" ? "assets" : filters.entityType,
     });

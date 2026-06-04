@@ -138,6 +138,34 @@ export function cameraPoseFocusOnAsset(
   })
 }
 
+export function focusTargetForBounds(bounds: SceneBounds): THREE.Vector3 {
+  return new THREE.Vector3(bounds.center[0], bounds.center[1], bounds.center[2])
+}
+
+/** 검색·필터 결과 bbox에 맞춘 카메라 */
+export function cameraPoseFocusOnBounds(
+  targetBounds: SceneBounds,
+  sceneBounds: SceneBounds,
+): CameraPose {
+  const target = focusTargetForBounds(targetBounds)
+  const span = Math.max(
+    targetBounds.size[0],
+    targetBounds.size[1],
+    targetBounds.size[2],
+    2,
+  )
+  const sceneSpan = maxSceneDim(sceneBounds)
+  const dist = Math.max(span * 1.85, sceneSpan * 0.28, 8)
+  return {
+    target,
+    position: new THREE.Vector3(
+      target.x + dist * 0.62,
+      target.y + dist * 0.48,
+      target.z + dist * 0.62,
+    ),
+  }
+}
+
 export function vec3ToThree(v: Vec3): THREE.Vector3 {
   return new THREE.Vector3(v[0], v[1], v[2])
 }

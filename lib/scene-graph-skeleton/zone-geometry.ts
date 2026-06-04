@@ -41,6 +41,69 @@ export function createZoneExtrudeGeometry(zone: ZoneNode): THREE.ExtrudeGeometry
   })
 }
 
+const capNormalScratch = [
+  new THREE.Vector3(),
+  new THREE.Vector3(),
+  new THREE.Vector3(),
+]
+
+/** 월드 +Y를 향하는 천장·상단 캡 면 제거 (컷어웨이) */
+export function stripUpwardCapFaces(
+  geometry: THREE.BufferGeometry,
+  minNormalY = 0.92,
+): THREE.BufferGeometry {
+  const source = geometry.index ? geometry.toNonIndexed() : geometry
+  const position = source.attributes.position
+  let normals = source.attributes.normal as THREE.BufferAttribute | undefined
+  const colors = source.attributes.color
+  if (!normals) {
+    source.computeVertexNormals()
+    normals = source.attributes.normal as THREE.BufferAttribute
+  }
+
+  const keptPositions: number[] = []
+  const keptNormals: number[] = []
+  const keptColors: number[] = []
+
+  for (let i = 0; i < position.count; i += 3) {
+    for (let v = 0; v < 3; v++) {
+      capNormalScratch[v]!.fromBufferAttribute(normals, i + v)
+    }
+    const avgNy =
+      (capNormalScratch[0]!.y +
+        capNormalScratch[1]!.y +
+        capNormalScratch[2]!.y) /
+      3
+    if (avgNy >= minNormalY) continue
+
+    for (let v = 0; v < 3; v++) {
+      const idx = i + v
+      keptPositions.push(
+        position.getX(idx),
+        position.getY(idx),
+        position.getZ(idx),
+      )
+      keptNormals.push(normals.getX(idx), normals.getY(idx), normals.getZ(idx))
+      if (colors) {
+        keptColors.push(colors.getX(idx), colors.getY(idx), colors.getZ(idx))
+      }
+    }
+  }
+
+  const next = new THREE.BufferGeometry()
+  next.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(keptPositions, 3),
+  )
+  next.setAttribute("normal", new THREE.Float32BufferAttribute(keptNormals, 3))
+  if (colors && keptColors.length > 0) {
+    next.setAttribute("color", new THREE.Float32BufferAttribute(keptColors, 3))
+  }
+  next.computeBoundingSphere()
+  if (source !== geometry) source.dispose()
+  return next
+}
+
 /** Thin floor pick surface — glass extrude does not participate in raycasts. */
 export function createZoneFloorPickGeometry(zone: ZoneNode): THREE.ShapeGeometry | null {
   const shape = buildZoneShape(zone)
@@ -53,6 +116,24 @@ export type ZoneGlassMaterialOptions = {
   color?: number
   emissive?: number
   emissiveIntensity?: number
+}
+
+/** 불투명 shell — Physical glass 대비 draw/필 비용 절감 */
+export function createShellZoneMaterial(
+  color: number,
+  options?: { opacity?: number; emissive?: number; emissiveIntensity?: number },
+): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color,
+    emissive: options?.emissive ?? 0x000000,
+    emissiveIntensity: options?.emissiveIntensity ?? 0,
+    transparent: (options?.opacity ?? 1) < 1,
+    opacity: options?.opacity ?? 0.88,
+    metalness: 0.08,
+    roughness: 0.72,
+    side: THREE.FrontSide,
+    depthWrite: true,
+  });
 }
 
 export function createGlassZoneMaterial(
@@ -73,6 +154,33 @@ export function createGlassZoneMaterial(
     side: THREE.DoubleSide,
     depthWrite: false,
   })
+}
+
+const shellMatrixPosition = new THREE.Vector3()
+const shellMatrixQuaternion = new THREE.Quaternion()
+const shellMatrixScale = new THREE.Vector3(1, 1, 1)
+const shellMatrix = new THREE.Matrix4()
+
+/** 구역 extrude를 월드 좌표로 올린 shell geometry (선택 시 천장 제거) */
+export function createZoneShellWorldGeometry(
+  zone: ZoneNode,
+  openRoof = false,
+): THREE.BufferGeometry | null {
+  const base = createZoneExtrudeGeometry(zone)
+  if (!base) return null
+
+  const transform = zoneMeshTransform(zone)
+  shellMatrixQuaternion.setFromEuler(transform.rotation)
+  shellMatrix.compose(
+    transform.position,
+    shellMatrixQuaternion,
+    shellMatrixScale,
+  )
+  const geo = base.clone()
+  geo.applyMatrix4(shellMatrix)
+  base.dispose()
+
+  return openRoof ? stripUpwardCapFaces(geo) : geo
 }
 
 export function zoneMeshTransform(zone: ZoneNode): {

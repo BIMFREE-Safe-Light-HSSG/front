@@ -11,6 +11,7 @@ import type {
 } from "@/components/facility-building-viewer/scene-camera-types"
 import {
   cameraPoseFocusOnAsset,
+  cameraPoseFocusOnBounds,
   cameraPoseFocusOnZone,
   cameraPoseForPreset,
   cameraPosePanTarget,
@@ -145,6 +146,32 @@ export function SceneCameraController({
           intensity === "subtle"
             ? cameraPosePanTarget(target, camera.position, controls.target)
             : cameraPoseFocusOnAsset(asset, bounds)
+        return {
+          pose: blendPose(
+            camera.position,
+            controls.target,
+            desired,
+            BLEND[intensity],
+          ),
+          intensity,
+        }
+      }
+      case "focus-bounds": {
+        const targetBounds: SceneBounds = {
+          min: action.min,
+          max: action.max,
+          center: [
+            (action.min[0] + action.max[0]) / 2,
+            (action.min[1] + action.max[1]) / 2,
+            (action.min[2] + action.max[2]) / 2,
+          ],
+          size: [
+            action.max[0] - action.min[0],
+            action.max[1] - action.min[1],
+            action.max[2] - action.min[2],
+          ],
+        }
+        const desired = cameraPoseFocusOnBounds(targetBounds, bounds)
         return {
           pose: blendPose(
             camera.position,

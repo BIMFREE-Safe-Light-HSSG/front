@@ -147,12 +147,33 @@ function FacilityAssetSpot({
     [],
   );
 
+  const stemMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: coreColor,
+        emissive: coreEmissive,
+        emissiveIntensity: 0.5,
+      }),
+    [coreColor, coreEmissive],
+  );
+
+  const selectedConeMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#ffffff",
+        transparent: true,
+        opacity: 0.9,
+      }),
+    [],
+  );
+
   useEffect(() => {
     const hit = hitRef.current;
     if (!hit) return;
     hit.renderOrder = 20;
+    hit.userData.assetId = asset.id;
     if (!interactive) hit.raycast = () => {};
-  }, [interactive]);
+  }, [interactive, asset.id]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
@@ -243,18 +264,20 @@ function FacilityAssetSpot({
           <ringGeometry args={[0.68, 0.88, 36]} />
         </mesh>
       ) : null}
-      <mesh position={[0, coreRadius + 0.12, 0]} renderOrder={13}>
+      <mesh
+        position={[0, coreRadius + 0.12, 0]}
+        renderOrder={13}
+        material={stemMaterial}
+      >
         <cylinderGeometry args={[0.04, 0.04, coreRadius * 0.9, 8]} />
-        <meshStandardMaterial
-          color={coreColor}
-          emissive={coreEmissive}
-          emissiveIntensity={0.5}
-        />
       </mesh>
       {selected ? (
-        <mesh position={[0, coreRadius + 0.45, 0]} renderOrder={14}>
+        <mesh
+          position={[0, coreRadius + 0.45, 0]}
+          renderOrder={14}
+          material={selectedConeMaterial}
+        >
           <coneGeometry args={[0.12, 0.22, 4]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.9} />
         </mesh>
       ) : null}
     </group>

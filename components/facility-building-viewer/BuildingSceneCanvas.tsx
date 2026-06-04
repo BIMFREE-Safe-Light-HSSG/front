@@ -8,19 +8,34 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
+import { AssetInstancedMarkers } from "@/components/facility-building-viewer/AssetInstancedMarkers";
+import { SceneAssetPick } from "@/components/facility-building-viewer/SceneAssetPick";
 import { AssetSpot } from "@/components/facility-building-viewer/AssetSpot";
+import { FireIncidentsInstanced } from "@/components/facility-building-viewer/FireIncidentsInstanced";
+import { AdaptiveSceneGrid } from "@/components/facility-building-viewer/AdaptiveSceneGrid";
+import { MergedBuildingSlab } from "@/components/facility-building-viewer/MergedBuildingSlab";
+import { MergedZoneRim } from "@/components/facility-building-viewer/MergedZoneRim";
+import { MergedZoneShell } from "@/components/facility-building-viewer/MergedZoneShell";
+import {
+  SceneEnvironment,
+  type ViewerSceneTheme,
+} from "@/components/facility-building-viewer/SceneEnvironment";
+import { partitionFacilityAssets } from "@/lib/scene-graph-skeleton/asset-marker-utils";
 import { FireIncidentMarker } from "@/components/facility-building-viewer/FireIncidentMarker";
 import { PlacementSurface } from "@/components/facility-building-viewer/PlacementSurface";
 import { SceneCameraController } from "@/components/facility-building-viewer/SceneCameraController";
-import type {
-  CameraCommand,
-  ViewerLayerVisibility,
+import {
+  DEFAULT_SHELL_DISPLAY,
+  type CameraCommand,
+  type ViewerLayerVisibility,
+  type ViewerShellDisplay,
 } from "@/components/facility-building-viewer/scene-camera-types";
 import { boundsFromZones } from "@/lib/scene-graph-skeleton/bounds";
 import { threePointToSkeleton } from "@/lib/scene-graph-skeleton/coordinates";
 import {
   createGlassZoneMaterial,
   createZoneExtrudeGeometry,
+  createZoneShellWorldGeometry,
   createZoneFloorPickGeometry,
   createZoneOutlineGeometry,
   FIREFIGHTER_FIRE_ZONE_COLOR,
@@ -46,6 +61,7 @@ export type BuildingSceneCanvasProps = {
   draftPosition: Vec3 | null;
   draftClass: string;
   layerVisibility: ViewerLayerVisibility;
+  shellDisplay?: ViewerShellDisplay;
   cameraCommand: CameraCommand | null;
   onSelectZone: (id: string | null) => void;
   onSelectAsset: (id: string) => void;
@@ -54,6 +70,8 @@ export type BuildingSceneCanvasProps = {
   onPlacementPick: (position: Vec3) => void;
   onContextPick?: (target: SceneContextTarget) => void;
   searchHighlightActive: boolean;
+  /** false면 시설 필터 시 구역 dim/노란 하이라이트 없음 */
+  zoneSearchHighlightActive?: boolean;
   highlightZoneIds: ReadonlySet<string>;
   highlightAssetIds: ReadonlySet<string>;
   fireIncidents?: FireIncident[];
@@ -63,6 +81,7 @@ export type BuildingSceneCanvasProps = {
   /** 소방 뷰: 구역 단일색 + 화재 구역만 붉게 */
   firefighterZoneView?: boolean;
   fireZoneIds?: ReadonlySet<string>;
+  sceneTheme?: ViewerSceneTheme;
 };
 
 export type SceneContextTarget = {
@@ -80,6 +99,10 @@ function disableRaycast(mesh: THREE.Mesh | null) {
   if (mesh) mesh.raycast = () => {};
 }
 
+function shellGlassOpacity(base: number, xray: boolean): number {
+  return xray ? Math.min(base * 0.48, 0.2) : base;
+}
+
 function ZonePanel({
   zone,
   index,
@@ -88,6 +111,9 @@ function ZonePanel({
   dimmed,
   placementMode,
   showMesh,
+  showShellFill,
+  useMergedZoneShell,
+  shellDisplay,
   firefighterZoneView,
   isFireZone,
   onSelect,
@@ -101,6 +127,11 @@ function ZonePanel({
   dimmed: boolean;
   placementMode: boolean;
   showMesh: boolean;
+  /** false — MergedZoneShell이 fill 담당 */
+  showShellFill: boolean;
+  /** true — 구역 바닥 pick 비활성, shell 클릭으로 구역 선택 */
+  useMergedZoneShell: boolean;
+  shellDisplay: ViewerShellDisplay;
   firefighterZoneView: boolean;
   isFireZone: boolean;
   onSelect: (id: string) => void;
@@ -108,12 +139,19 @@ function ZonePanel({
   onContextPick?: (target: SceneContextTarget) => void;
 }) {
   const fillRef = useRef<THREE.Mesh>(null);
+  const floorPickRef = useRef<THREE.Mesh>(null);
   const color = firefighterZoneView
     ? isFireZone
       ? FIREFIGHTER_FIRE_ZONE_COLOR
       : FIREFIGHTER_NEUTRAL_ZONE_COLOR
     : zoneAccentColor(index);
-  const geometry = useMemo(() => createZoneExtrudeGeometry(zone), [zone]);
+  const shellXray = shellDisplay.transparent;
+  const geometry = useMemo(() => {
+    if (shellDisplay.openRoof) {
+      return createZoneShellWorldGeometry(zone, true);
+    }
+    return createZoneExtrudeGeometry(zone);
+  }, [zone, shellDisplay.openRoof]);
   const floorPick = useMemo(() => createZoneFloorPickGeometry(zone), [zone]);
   const outline = useMemo(() => createZoneOutlineGeometry(zone), [zone]);
   const glowOutline = useMemo(
@@ -124,18 +162,26 @@ function ZonePanel({
   const material = useMemo(() => {
     if (firefighterZoneView) {
       if (dimmed && !isFireZone) {
-        return createGlassZoneMaterial(FIREFIGHTER_NEUTRAL_ZONE_COLOR, { opacity: 0.06 });
+        return createGlassZoneMaterial(FIREFIGHTER_NEUTRAL_ZONE_COLOR, {
+          opacity: shellGlassOpacity(0.06, shellXray),
+        });
       }
       if (isFireZone) {
         return createGlassZoneMaterial(FIREFIGHTER_FIRE_ZONE_COLOR, {
-          opacity: selected ? 0.62 : highlighted ? 0.56 : 0.48,
+          opacity: shellGlassOpacity(
+            selected ? 0.62 : highlighted ? 0.56 : 0.48,
+            shellXray,
+          ),
           color: selected ? 0xfca5a5 : FIREFIGHTER_FIRE_ZONE_COLOR,
           emissive: 0xb91c1c,
           emissiveIntensity: selected ? 0.55 : highlighted ? 0.48 : 0.4,
         });
       }
       return createGlassZoneMaterial(FIREFIGHTER_NEUTRAL_ZONE_COLOR, {
-        opacity: selected ? 0.38 : highlighted ? 0.34 : 0.28,
+        opacity: shellGlassOpacity(
+          selected ? 0.38 : highlighted ? 0.34 : 0.28,
+          shellXray,
+        ),
         color: selected ? 0xc8d9eb : FIREFIGHTER_NEUTRAL_ZONE_COLOR,
         emissive: 0x1e3a5f,
         emissiveIntensity: selected ? 0.22 : 0.14,
@@ -143,17 +189,21 @@ function ZonePanel({
     }
     if (highlighted) {
       return createGlassZoneMaterial(color, {
-        opacity: 0.58,
+        opacity: shellGlassOpacity(0.58, shellXray),
         color: 0xfff4a3,
         emissive: 0xfbbf24,
         emissiveIntensity: 0.35,
       });
     }
     if (dimmed) {
-      return createGlassZoneMaterial(color, { opacity: 0.07 });
+      return createGlassZoneMaterial(color, {
+        opacity: shellGlassOpacity(0.07, shellXray),
+      });
     }
-    return createGlassZoneMaterial(selected ? 0xffffff : color);
-  }, [color, selected, highlighted, dimmed, firefighterZoneView, isFireZone]);
+    return createGlassZoneMaterial(selected ? 0xffffff : color, {
+      opacity: shellGlassOpacity(selected ? 0.42 : 0.3, shellXray),
+    });
+  }, [color, selected, highlighted, dimmed, firefighterZoneView, isFireZone, shellXray]);
 
   const outlineMaterial = useMemo(
     () =>
@@ -229,6 +279,7 @@ function ZonePanel({
 
   useEffect(() => {
     disableRaycast(fillRef.current);
+    disableRaycast(floorPickRef.current);
     if (outlineLine) outlineLine.raycast = () => {};
     if (glowLine) glowLine.raycast = () => {};
     return () => {
@@ -294,13 +345,17 @@ function ZonePanel({
 
   return (
     <group>
-      {showMesh && geometry ? (
+      {showMesh && showShellFill && geometry ? (
         <mesh
           ref={fillRef}
           geometry={geometry}
           material={material}
-          position={transform.position}
-          rotation={transform.rotation}
+          {...(shellDisplay.openRoof
+            ? {}
+            : {
+                position: transform.position,
+                rotation: transform.rotation,
+              })}
           renderOrder={1}
         />
       ) : null}
@@ -312,12 +367,13 @@ function ZonePanel({
       ) : null}
       {floorPick ? (
         <mesh
+          ref={floorPickRef}
           geometry={floorPick}
           material={floorPickMaterial}
           position={transform.position}
           rotation={transform.rotation}
           renderOrder={0}
-          {...pickHandlers}
+          {...(useMergedZoneShell ? {} : pickHandlers)}
         />
       ) : null}
     </group>
@@ -334,6 +390,7 @@ function SceneContent({
   draftPosition,
   draftClass,
   layerVisibility,
+  shellDisplay = DEFAULT_SHELL_DISPLAY,
   cameraCommand,
   onSelectZone,
   onSelectAsset,
@@ -341,6 +398,7 @@ function SceneContent({
   onPlacementPick,
   onContextPick,
   searchHighlightActive,
+  zoneSearchHighlightActive = false,
   highlightZoneIds,
   highlightAssetIds,
   fireIncidents = [],
@@ -349,6 +407,7 @@ function SceneContent({
   placementVariant = "default",
   firefighterZoneView = false,
   fireZoneIds,
+  sceneTheme = "day",
 }: BuildingSceneCanvasProps) {
   const bounds = useMemo(() => boundsFromZones(zones, assets), [zones, assets]);
   const draftAsset = useMemo((): FacilityAssetRef | null => {
@@ -357,36 +416,85 @@ function SceneContent({
     return { id: "__draft__", class: draftClassName, position: draftPosition };
   }, [draftPosition, draftClass, placementVariant]);
 
-  const showZones = layerVisibility.zones || placementMode;
-  const showZoneMeshes = layerVisibility.zones;
-  const showAssets = layerVisibility.assets;
+  const showShell = layerVisibility.shell || placementMode;
+  const showZoneMeshes = layerVisibility.shell;
+  const showFacility = layerVisibility.facility;
+  const showStructure = layerVisibility.structure;
   const showFires = layerVisibility.fires ?? true;
+  const shellSlabVisible = showZoneMeshes && zones.length > 0;
+
+  const assetMarkerState = useMemo(
+    () => ({
+      selectedAssetId,
+      hoveredAssetId,
+      highlightAssetIds,
+    }),
+    [selectedAssetId, hoveredAssetId, highlightAssetIds],
+  );
+
+  const {
+    instanced: instancedAssets,
+    animated: animatedAssets,
+    structural: structuralAssets,
+  } = useMemo(
+    () => partitionFacilityAssets(assets, assetMarkerState),
+    [assets, assetMarkerState],
+  );
+
+  const useMergedZoneShell = showZoneMeshes && !firefighterZoneView;
+
+  const zoneShellStates = useMemo(
+    () =>
+      zones.map((zone, index) => {
+        const zHighlighted =
+          zoneSearchHighlightActive && highlightZoneIds.has(zone.id);
+        const isFireZone = fireZoneIds?.has(zone.id) ?? false;
+        const zDimmed =
+          zoneSearchHighlightActive &&
+          searchHighlightActive &&
+          !zHighlighted &&
+          !(firefighterZoneView && isFireZone);
+        return {
+          zoneId: zone.id,
+          index,
+          selected: selectedZoneId === zone.id,
+          highlighted: zHighlighted,
+          dimmed: zDimmed,
+          firefighterZoneView,
+          isFireZone,
+        };
+      }),
+    [
+      zones,
+      selectedZoneId,
+      zoneSearchHighlightActive,
+      highlightZoneIds,
+      searchHighlightActive,
+      firefighterZoneView,
+      fireZoneIds,
+    ],
+  );
+
+  const staticFireIncidents = useMemo(
+    () =>
+      fireIncidents.filter(
+        (incident) =>
+          incident.id !== selectedFireId && incident.id !== "__draft_fire__",
+      ),
+    [fireIncidents, selectedFireId],
+  );
+
+  const selectedFireIncident = useMemo(
+    () => fireIncidents.find((incident) => incident.id === selectedFireId) ?? null,
+    [fireIncidents, selectedFireId],
+  );
 
   if (!bounds) return null;
 
   return (
     <>
-      <color attach="background" args={["#0c1220"]} />
-      <fog
-        attach="fog"
-        args={["#0c1220", bounds.size[0] * 2, bounds.size[0] * 8]}
-      />
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[12, 18, 8]} intensity={1.1} />
-      <directionalLight
-        position={[-8, 10, -6]}
-        intensity={0.35}
-        color="#93c5fd"
-      />
-      <gridHelper
-        args={[
-          Math.max(bounds.size[0], bounds.size[2]) * 1.4,
-          24,
-          "#1e3a5f",
-          "#132238",
-        ]}
-        position={[bounds.center[0], bounds.min[1] - 0.05, bounds.center[2]]}
-      />
+      <SceneEnvironment bounds={bounds} theme={sceneTheme} />
+      <AdaptiveSceneGrid bounds={bounds} shellVisible={shellSlabVisible} />
       <SceneCameraController
         bounds={bounds}
         zones={zones}
@@ -399,25 +507,44 @@ function SceneContent({
         onPick={onPlacementPick}
         variant={placementVariant}
       />
-      {showZones ? (
+      {showShell ? (
         <group>
+          {shellSlabVisible ? <MergedBuildingSlab zones={zones} /> : null}
+          {shellSlabVisible ? (
+            <MergedZoneRim
+              zones={zones}
+              emergency={sceneTheme === "emergency"}
+            />
+          ) : null}
+          {useMergedZoneShell ? (
+            <MergedZoneShell
+              zones={zones}
+              states={zoneShellStates}
+              shellDisplay={shellDisplay}
+              pickAssets={instancedAssets}
+              placementMode={placementMode}
+              onSelectZone={(id) => onSelectZone(id)}
+              onSelectAsset={onSelectAsset}
+              onPlacementPick={onPlacementPick}
+            />
+          ) : null}
           {zones.map((zone, index) => {
-            const zHighlighted = highlightZoneIds.has(zone.id);
-            const isFireZone = fireZoneIds?.has(zone.id) ?? false;
-            const zDimmed =
-              searchHighlightActive && !zHighlighted && !(firefighterZoneView && isFireZone);
+            const state = zoneShellStates[index]!;
             return (
               <ZonePanel
                 key={zone.id}
                 zone={zone}
                 index={index}
-                selected={selectedZoneId === zone.id}
-                highlighted={zHighlighted}
-                dimmed={zDimmed}
+                selected={state.selected}
+                highlighted={state.highlighted}
+                dimmed={state.dimmed}
                 placementMode={placementMode}
                 showMesh={showZoneMeshes}
+                showShellFill={!useMergedZoneShell}
+                useMergedZoneShell={useMergedZoneShell}
+                shellDisplay={shellDisplay}
                 firefighterZoneView={firefighterZoneView}
-                isFireZone={isFireZone}
+                isFireZone={state.isFireZone}
                 onSelect={(id) => onSelectZone(id)}
                 onPlacementPick={onPlacementPick}
                 onContextPick={onContextPick}
@@ -426,9 +553,22 @@ function SceneContent({
           })}
         </group>
       ) : null}
-      {showAssets ? (
+      {showFacility ? (
         <group>
-          {assets.map((asset) => {
+          <AssetInstancedMarkers
+            assets={instancedAssets}
+            boundsCenter={bounds.center}
+            boundsSize={bounds.size}
+            searchHighlightActive={searchHighlightActive}
+            highlightAssetIds={highlightAssetIds}
+          />
+          <SceneAssetPick
+            assets={instancedAssets}
+            onSelect={onSelectAsset}
+            onHover={onHoverAsset}
+            onContextPick={onContextPick}
+          />
+          {animatedAssets.map((asset) => {
             const aHighlighted = highlightAssetIds.has(asset.id);
             const aDimmed = searchHighlightActive && !aHighlighted;
             return (
@@ -448,7 +588,29 @@ function SceneContent({
           })}
         </group>
       ) : null}
-      {draftAsset && placementVariant !== "fire" && (showAssets || placementMode) ? (
+      {showStructure ? (
+        <group>
+          {structuralAssets.map((asset) => {
+            const aHighlighted = highlightAssetIds.has(asset.id);
+            const aDimmed = searchHighlightActive && !aHighlighted;
+            return (
+              <AssetSpot
+                key={asset.id}
+                asset={asset}
+                zones={zones}
+                selected={selectedAssetId === asset.id}
+                hovered={hoveredAssetId === asset.id}
+                highlighted={aHighlighted}
+                dimmed={aDimmed}
+                onSelect={onSelectAsset}
+                onHover={onHoverAsset}
+                onContextPick={onContextPick}
+              />
+            );
+          })}
+        </group>
+      ) : null}
+      {draftAsset && placementVariant !== "fire" && (showFacility || placementMode) ? (
         <AssetSpot
           key={draftAsset.id}
           asset={draftAsset}
@@ -475,16 +637,22 @@ function SceneContent({
       ) : null}
       {showFires ? (
         <group>
-          {fireIncidents.map((incident) => (
+          <FireIncidentsInstanced
+            incidents={staticFireIncidents}
+            interactive={Boolean(onSelectFire)}
+            onSelect={(id) => onSelectFire?.(id)}
+            onContextPick={onContextPick}
+          />
+          {selectedFireIncident ? (
             <FireIncidentMarker
-              key={incident.id}
-              incident={incident}
-              selected={selectedFireId === incident.id}
+              key={selectedFireIncident.id}
+              incident={selectedFireIncident}
+              selected
               interactive={Boolean(onSelectFire)}
-          onSelect={(id) => onSelectFire?.(id)}
-          onContextPick={onContextPick}
+              onSelect={(id) => onSelectFire?.(id)}
+              onContextPick={onContextPick}
             />
-          ))}
+          ) : null}
         </group>
       ) : null}
     </>
@@ -514,8 +682,8 @@ export function BuildingSceneCanvas(props: BuildingSceneCanvasProps) {
     <Canvas
       className="h-full w-full touch-none"
       camera={{ fov: 48, position: [0, 8, 12] }}
-      gl={{ antialias: true, alpha: true }}
-      dpr={[1, 2]}
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      dpr={[1, 1.5]}
       onPointerMissed={() => {
         if (!props.placementMode) props.onClearSelection();
       }}

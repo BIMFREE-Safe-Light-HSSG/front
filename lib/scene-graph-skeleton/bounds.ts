@@ -56,3 +56,18 @@ export function boundsFromZones(zones: ZoneNode[], assets: FacilityAssetRef[] = 
   ]
   return bounds
 }
+
+export function boundsFromSubset(
+  zones: ZoneNode[],
+  assets: FacilityAssetRef[],
+  zoneIds: ReadonlySet<string>,
+  assetIds: ReadonlySet<string>,
+): SceneBounds | null {
+  const pickedZones =
+    zoneIds.size > 0 ? zones.filter((z) => zoneIds.has(z.id)) : [];
+  const pickedAssets =
+    assetIds.size > 0 ? assets.filter((a) => assetIds.has(a.id)) : [];
+
+  if (pickedZones.length === 0 && pickedAssets.length === 0) return null;
+  return boundsFromZones(pickedZones, pickedAssets);
+}

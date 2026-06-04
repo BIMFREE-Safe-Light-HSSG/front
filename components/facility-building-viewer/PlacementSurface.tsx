@@ -45,6 +45,14 @@ export function PlacementSurface({
       material={material}
       renderOrder={30}
       onClick={(e: ThreeEvent<MouseEvent>) => {
+        const selfDistance = e.intersections.find((hit) => hit.object === e.object)?.distance;
+        if (selfDistance !== undefined) {
+          const assetCloser = e.intersections.some(
+            (hit) => hit.object !== e.object && hit.distance < selfDistance - 0.02,
+          );
+          if (assetCloser) return;
+        }
+
         e.stopPropagation();
         const p = e.point;
         onPick(threePointToSkeleton(p.x, p.y, p.z));

@@ -4,28 +4,38 @@ import {
   Box,
   CircleDot,
   Crosshair,
+  DoorOpen,
   Flame,
   Home,
   Layers,
   MapPin,
+  PanelTop,
   RotateCcw,
+  ScanEye,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { ViewerLayerVisibility } from "@/components/facility-building-viewer/scene-camera-types";
+import type {
+  ViewerLayerVisibility,
+  ViewerShellDisplay,
+} from "@/components/facility-building-viewer/scene-camera-types";
 import { viewerGlass } from "@/components/facility-building-viewer/viewer-design";
 import { cn } from "@/lib/utils";
 
 type ViewerCanvasNavBarProps = {
   layerVisibility: ViewerLayerVisibility;
+  shellDisplay: ViewerShellDisplay;
   hasSelection: boolean;
   onResetView: () => void;
   onTopView: () => void;
   onIsoView: () => void;
   onFocusSelection: () => void;
-  onToggleZones: () => void;
-  onToggleAssets: () => void;
+  onToggleShell: () => void;
+  onToggleFacility: () => void;
+  onToggleStructure: () => void;
   onToggleFires?: () => void;
+  onToggleShellTransparent: () => void;
+  onToggleShellOpenRoof: () => void;
 };
 
 function NavBtn({
@@ -89,14 +99,18 @@ function LayerToggle({
 
 export function ViewerCanvasNavBar({
   layerVisibility,
+  shellDisplay,
   hasSelection,
   onResetView,
   onTopView,
   onIsoView,
   onFocusSelection,
-  onToggleZones,
-  onToggleAssets,
+  onToggleShell,
+  onToggleFacility,
+  onToggleStructure,
   onToggleFires,
+  onToggleShellTransparent,
+  onToggleShellOpenRoof,
 }: ViewerCanvasNavBarProps) {
   return (
     <div className="pointer-events-auto absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
@@ -129,16 +143,22 @@ export function ViewerCanvasNavBar({
         <div className="flex items-center gap-0.5 px-1">
           <Layers className="mr-0.5 h-3.5 w-3.5 text-red-800/50" aria-hidden />
           <LayerToggle
-            active={layerVisibility.zones}
-            label="구역"
+            active={layerVisibility.shell}
+            label="건물"
             icon={Box}
-            onClick={onToggleZones}
+            onClick={onToggleShell}
           />
           <LayerToggle
-            active={layerVisibility.assets}
+            active={layerVisibility.facility}
             label="시설"
             icon={CircleDot}
-            onClick={onToggleAssets}
+            onClick={onToggleFacility}
+          />
+          <LayerToggle
+            active={layerVisibility.structure}
+            label="구조"
+            icon={DoorOpen}
+            onClick={onToggleStructure}
           />
           {onToggleFires ? (
             <LayerToggle
@@ -148,6 +168,23 @@ export function ViewerCanvasNavBar({
               onClick={onToggleFires}
             />
           ) : null}
+        </div>
+
+        <span className="mx-0.5 h-6 w-px bg-red-900/15" aria-hidden />
+
+        <div className="flex items-center gap-0.5 px-1">
+          <LayerToggle
+            active={shellDisplay.transparent}
+            label="반투명"
+            icon={ScanEye}
+            onClick={onToggleShellTransparent}
+          />
+          <LayerToggle
+            active={shellDisplay.openRoof}
+            label="천장 OFF"
+            icon={PanelTop}
+            onClick={onToggleShellOpenRoof}
+          />
         </div>
       </nav>
     </div>

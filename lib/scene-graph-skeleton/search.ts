@@ -46,7 +46,12 @@ function assetMatchesFilters(asset: FacilityAssetRef, filters: ViewerSearchFilte
 }
 
 function zoneMatchesFilters(zone: ZoneNode, filters: ViewerSearchFilters, query: string): boolean {
-  if (!query) return true
+  if (filters.zoneId && zone.id !== filters.zoneId) return false
+  if (filters.entityType === "zones") {
+    if (!query) return true
+  } else if (!query) {
+    return false
+  }
   const blob = [
     zone.id,
     zone.name,
@@ -54,6 +59,16 @@ function zoneMatchesFilters(zone: ZoneNode, filters: ViewerSearchFilters, query:
     ...zone.geometry.center.map(String),
   ].join(" ")
   return matchesText(blob, query)
+}
+
+/** 구역 검색·노란 하이라이트 — 시설 분류/상태만 고를 때는 false */
+export function shouldSearchZones(filters: ViewerSearchFilters): boolean {
+  if (filters.entityType === "assets") return false
+  if (filters.entityType === "zones") return true
+  const query = normalizeQuery(filters.query)
+  if (query.length > 0) return true
+  if (filters.zoneId) return true
+  return false
 }
 
 export function hasActiveViewerSearch(filters: ViewerSearchFilters): boolean {
@@ -77,7 +92,7 @@ export function runViewerSearch(
 
   const results: ViewerSearchResult[] = []
 
-  if (filters.entityType === "all" || filters.entityType === "zones") {
+  if (shouldSearchZones(filters)) {
     for (const zone of zones) {
       if (!zoneMatchesFilters(zone, filters, query)) continue
       results.push({
@@ -106,7 +121,10 @@ export function runViewerSearch(
   return results
 }
 
-/** 검색 패널 필터에 맞춰 3D 캔버스에 그릴 자산만 남김 */
+/**
+ * 검색 패널과 동일한 조건으로 3D 캔버스에 그릴 자산을 고릅니다.
+ * (키워드·구역·분류·상태·대상=시설만 — 결과 목록과 동일 규칙)
+ */
 export function filterAssetsForViewerDisplay(
   assets: FacilityAssetRef[],
   filters: ViewerSearchFilters,
@@ -115,34 +133,30 @@ export function filterAssetsForViewerDisplay(
     return []
   }
 
-  let out = assets
-
-  if (filters.zoneId) {
-    out = out.filter((asset) => asset.zoneId === filters.zoneId)
+  if (!hasActiveViewerSearch(filters)) {
+    return assets
   }
 
-  if (filters.assetClasses.length > 0) {
-    out = out.filter((asset) => filters.assetClasses.includes(asset.class))
-  }
-
-  if (filters.assetStatuses.length > 0) {
-    out = out.filter((asset) =>
-      filters.assetStatuses.includes(asset.status ?? "normal"),
-    )
-  }
-
-  return out
+  const query = normalizeQuery(filters.query)
+  return assets.filter((asset) => assetMatchesFilters(asset, filters, query))
 }
 
-export function highlightSetsFromResults(results: ViewerSearchResult[]): {
+export function highlightSetsFromResults(
+  results: ViewerSearchResult[],
+  options?: { includeZones?: boolean },
+): {
   zoneIds: Set<string>
   assetIds: Set<string>
 } {
+  const includeZones = options?.includeZones ?? true
   const zoneIds = new Set<string>()
   const assetIds = new Set<string>()
   for (const r of results) {
-    if (r.kind === "zone") zoneIds.add(r.id)
-    else assetIds.add(r.id)
+    if (r.kind === "zone") {
+      if (includeZones) zoneIds.add(r.id)
+    } else {
+      assetIds.add(r.id)
+    }
   }
   return { zoneIds, assetIds }
 }
