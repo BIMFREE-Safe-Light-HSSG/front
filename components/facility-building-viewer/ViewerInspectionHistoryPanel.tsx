@@ -21,6 +21,7 @@ type ViewerInspectionHistoryPanelProps = {
   open: boolean;
   buildingName?: string | null;
   assets: FacilityAssetRef[];
+  selectedAssetId?: string | null;
   buildingInspectionHistory?: AssetInspectionRecord[];
   onClose: () => void;
   onSelectAsset?: (assetId: string) => void;
@@ -30,6 +31,7 @@ export function ViewerInspectionHistoryPanel({
   open,
   buildingName,
   assets,
+  selectedAssetId = null,
   buildingInspectionHistory,
   onClose,
   onSelectAsset,
@@ -98,6 +100,13 @@ export function ViewerInspectionHistoryPanel({
                     <HistoryRow
                       key={record.id}
                       record={record}
+                      selected={
+                        Boolean(
+                          selectedAssetId &&
+                            record.assetId &&
+                            record.assetId === selectedAssetId,
+                        )
+                      }
                       onSelectAsset={
                         record.assetId && onSelectAsset
                           ? () => onSelectAsset(record.assetId!)
@@ -117,9 +126,11 @@ export function ViewerInspectionHistoryPanel({
 
 function HistoryRow({
   record,
+  selected = false,
   onSelectAsset,
 }: {
   record: InspectionRecord;
+  selected?: boolean;
   onSelectAsset?: () => void;
 }) {
   const content = (
@@ -142,11 +153,16 @@ function HistoryRow({
     </>
   );
 
+  const rowClass = cn(
+    "w-full rounded-2xl border px-3.5 py-3 text-left shadow-sm transition-colors",
+    selected
+      ? "border-red-600/35 bg-red-50/90 ring-2 ring-red-800/20"
+      : "border-red-900/8 bg-white/55 hover:bg-red-950/6 hover:ring-1 hover:ring-red-900/15",
+  );
+
   if (!onSelectAsset) {
     return (
-      <li className="rounded-2xl border border-red-900/8 bg-white/55 px-3.5 py-3 shadow-sm">
-        {content}
-      </li>
+      <li className={cn(rowClass, "block")}>{content}</li>
     );
   }
 
@@ -155,7 +171,7 @@ function HistoryRow({
       <button
         type="button"
         onClick={onSelectAsset}
-        className="w-full rounded-2xl border border-red-900/8 bg-white/55 px-3.5 py-3 text-left shadow-sm transition-colors hover:bg-red-950/6 hover:ring-1 hover:ring-red-900/15"
+        className={rowClass}
       >
         {content}
       </button>

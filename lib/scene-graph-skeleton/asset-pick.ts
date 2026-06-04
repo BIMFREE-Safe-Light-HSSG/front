@@ -1,7 +1,15 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import type * as THREE from "three";
 
+import { isStructuralAssetClass } from "./structural-assets";
 import type { FacilityAssetRef } from "./types";
+
+/** door/window 제외 — 통합 pick 대상 */
+export function listFacilityPickAssets(
+  assets: FacilityAssetRef[],
+): FacilityAssetRef[] {
+  return assets.filter((asset) => !isStructuralAssetClass(asset.class));
+}
 
 /** Instanced pick mesh (`SceneAssetPick`) */
 export function resolveInstancedAssetFromIntersections(
@@ -31,18 +39,25 @@ export function resolveSpotAssetIdFromIntersections(
   return null;
 }
 
-export function resolveFacilityAssetFromPointer(
+export function resolveFacilityAssetFromIntersections(
   instancedAssets: FacilityAssetRef[],
-  event: ThreeEvent<MouseEvent | PointerEvent>,
+  intersections: THREE.Intersection[],
 ): FacilityAssetRef | null {
-  const spotId = resolveSpotAssetIdFromIntersections(event.intersections);
+  const spotId = resolveSpotAssetIdFromIntersections(intersections);
   if (spotId) {
     return (
       instancedAssets.find((a) => a.id === spotId) ??
       ({ id: spotId } as FacilityAssetRef)
     );
   }
-  return resolveInstancedAssetFromIntersections(
+  return resolveInstancedAssetFromIntersections(instancedAssets, intersections);
+}
+
+export function resolveFacilityAssetFromPointer(
+  instancedAssets: FacilityAssetRef[],
+  event: ThreeEvent<MouseEvent | PointerEvent>,
+): FacilityAssetRef | null {
+  return resolveFacilityAssetFromIntersections(
     instancedAssets,
     event.intersections,
   );

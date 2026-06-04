@@ -9,7 +9,6 @@ import {
   BuildingSceneCanvas,
   type SceneContextTarget,
 } from "@/components/facility-building-viewer/BuildingSceneCanvas";
-import { AssetHoverTooltip } from "@/components/facility-building-viewer/AssetHoverTooltip";
 import { ViewerCanvasNavBar } from "@/components/facility-building-viewer/ViewerCanvasNavBar";
 import { ViewerMinimap } from "@/components/facility-building-viewer/ViewerMinimap";
 import { ViewerFireIncidentsPanel } from "@/components/facility-building-viewer/ViewerFireIncidentsPanel";
@@ -386,8 +385,6 @@ export function EmbeddedBuildingSceneViewer({
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [selectedFireId, setSelectedFireId] = useState<string | null>(null);
-  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
-  const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [firePanelOpen, setFirePanelOpen] = useState(false);
@@ -431,7 +428,6 @@ export function EmbeddedBuildingSceneViewer({
   const buildingInspectionHistory = doc?.scene_graph.inspection_history;
   const assets = useMemo(() => (doc ? collectAssets(doc) : []), [doc]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
-  const hoveredAsset = assets.find((asset) => asset.id === hoveredAssetId) ?? null;
   const assetClassOptions = useMemo(() => uniqueAssetClasses(assets), [assets]);
   const searchResults = useMemo(() => {
     const results = runViewerSearch(zones, assets, searchFilters);
@@ -522,10 +518,10 @@ export function EmbeddedBuildingSceneViewer({
 
   useEffect(() => {
     if (!enableFacilityTools || !selectedAssetId) return;
-    if (!canvasAssets.some((asset) => asset.id === selectedAssetId)) {
+    if (!assets.some((asset) => asset.id === selectedAssetId)) {
       setSelectedAssetId(null);
     }
-  }, [canvasAssets, selectedAssetId, enableFacilityTools]);
+  }, [assets, selectedAssetId, enableFacilityTools]);
 
   const searchFocusBounds = useMemo(() => {
     if (!enableFacilityTools || !searchFiltersActive) return null;
@@ -554,13 +550,6 @@ export function EmbeddedBuildingSceneViewer({
   const rawEdgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
   const hasSelection = Boolean(selectedAssetId || selectedZoneId);
 
-  const updateHoverAnchor = useCallback((clientX: number, clientY: number) => {
-    const el = canvasWrapRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setHoverAnchor({ x: clientX - rect.left, y: clientY - rect.top });
-  }, []);
-
   const pushCamera = useCallback((action: CameraCommandAction) => {
     cameraSeqRef.current += 1;
     setCameraCommand({ seq: cameraSeqRef.current, action });
@@ -582,10 +571,14 @@ export function EmbeddedBuildingSceneViewer({
   const handleSelectAsset = useCallback(
     (id: string) => {
       setSelectedAssetId(id);
+      setSelectedFireId(null);
+      setSidePanelOpen(true);
+      setSearchOpen(false);
       const asset = assets.find((item) => item.id === id);
       if (asset?.zoneId) setSelectedZoneId(asset.zoneId);
+      pushCamera({ type: "focus-asset", assetId: id, intensity: "subtle" });
     },
-    [assets],
+    [assets, pushCamera],
   );
 
   const handleSelectSearchResult = useCallback(
@@ -692,14 +685,13 @@ export function EmbeddedBuildingSceneViewer({
       });
 
       if (target.assetId) {
-        setSelectedAssetId(target.assetId);
-        if (target.zoneId) setSelectedZoneId(target.zoneId);
+        handleSelectAsset(target.assetId);
       }
       if (target.fireId) {
         setSelectedFireId(target.fireId);
       }
     },
-    [enableFacilityTools],
+    [enableFacilityTools, handleSelectAsset],
   );
 
   const openAssetAddDialog = useCallback(() => {
@@ -960,13 +952,6 @@ export function EmbeddedBuildingSceneViewer({
         "h-full min-h-[520px] overflow-hidden rounded-[2rem] border-0 bg-zinc-950",
         isEmergency && "ring-2 ring-red-500/30",
       )}
-      onPointerMove={(event) => {
-        if (hoveredAssetId) updateHoverAnchor(event.clientX, event.clientY);
-      }}
-      onPointerLeave={() => {
-        setHoverAnchor(null);
-        setHoveredAssetId(null);
-      }}
       onContextMenu={(event) => {
         if (enableFacilityTools) {
           event.preventDefault();
@@ -1145,6 +1130,7 @@ export function EmbeddedBuildingSceneViewer({
           open={sidePanelOpen}
           buildingName={buildingName ?? sceneGraph.building_name}
           assets={assets}
+          selectedAssetId={selectedAssetId}
           buildingInspectionHistory={buildingInspectionHistory}
           onClose={() => setSidePanelOpen(false)}
           onSelectAsset={handleSelectAsset}
@@ -1161,7 +1147,8 @@ export function EmbeddedBuildingSceneViewer({
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
             className={cn(
               viewerGlass.overlayLight,
-              "pointer-events-auto absolute bottom-16 left-3 z-20 flex max-h-[min(52%,420px)] w-[min(100%,320px)] flex-col overflow-hidden rounded-2xl shadow-xl",
+              "pointer-events-auto absolute bottom-44 left-3 z-30 flex max-h-[min(48%,380px)] w-[min(100%,320px)] flex-col overflow-hidden rounded-2xl shadow-xl",
+              sidePanelOpen && "max-w-[min(280px,calc(100%-2rem))]",
             )}
           >
             <AssetDetailPanel
@@ -1273,7 +1260,7 @@ export function EmbeddedBuildingSceneViewer({
         assets={canvasAssets}
         selectedZoneId={selectedZoneId}
         selectedAssetId={enableFacilityTools ? selectedAssetId : null}
-        hoveredAssetId={hoveredAssetId}
+        hoveredAssetId={null}
         placementMode={firePlacementActive}
         draftPosition={firePlacementActive ? draftFirePosition : null}
         draftClass="화재"
@@ -1300,29 +1287,18 @@ export function EmbeddedBuildingSceneViewer({
           }
         }}
         onSelectAsset={enableFacilityTools ? handleSelectAsset : () => {}}
-        onHoverAsset={(id) => {
-          setHoveredAssetId(id);
-          if (!id) setHoverAnchor(null);
-        }}
         onContextPick={enableFacilityTools ? handleCanvasContextPick : undefined}
         onClearSelection={() => {
           if (firePlacementActive) return;
           setSelectedZoneId(null);
           setSelectedAssetId(null);
           setSelectedFireId(null);
-          setHoveredAssetId(null);
-          setHoverAnchor(null);
         }}
         onPlacementPick={(position) => {
           if (firePlacementActive) {
             handleFirePlacementPick(position);
           }
         }}
-      />
-
-      <AssetHoverTooltip
-        asset={hoveredAsset && !selectedAsset ? hoveredAsset : null}
-        anchor={hoverAnchor}
       />
 
       <Dialog

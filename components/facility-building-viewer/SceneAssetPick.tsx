@@ -1,15 +1,24 @@
 "use client";
 
 import type { ThreeEvent } from "@react-three/fiber";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useThree } from "@react-three/fiber";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import * as THREE from "three";
 
 import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import {
   getAssetPickMaterial,
   SHARED_ASSET_HIT_SPHERE,
+  SHARED_ASSET_HIT_SPHERE_XRAY,
 } from "@/lib/scene-graph-skeleton/asset-marker-materials";
 import { resolveInstancedAssetFromIntersections } from "@/lib/scene-graph-skeleton/asset-pick";
+import { raycastFacilityPickMesh } from "@/lib/scene-graph-skeleton/facility-pick-raycast";
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
 import type { FacilityAssetRef } from "@/lib/scene-graph-skeleton/types";
 
@@ -17,15 +26,34 @@ const matrixScratch = new THREE.Object3D();
 
 export type SceneAssetPickProps = {
   assets: FacilityAssetRef[];
+  /** 반투명 shell — pick 구 확대 */
+  xrayShell?: boolean;
   onSelect: (id: string) => void;
-  onHover: (id: string | null) => void;
   onContextPick?: (target: SceneContextTarget) => void;
 };
 
-function resolveAsset(
+function resolveAssetFromEvent(
   assets: FacilityAssetRef[],
+  pickMesh: THREE.InstancedMesh | null,
   event: ThreeEvent<MouseEvent | PointerEvent>,
+  raycaster: THREE.Raycaster,
+  camera: THREE.Camera,
+  domElement: HTMLElement,
+  xrayShell: boolean,
 ): FacilityAssetRef | null {
+  if (xrayShell) {
+    const fromRaycast = raycastFacilityPickMesh(
+      raycaster,
+      camera,
+      domElement,
+      event.nativeEvent.clientX,
+      event.nativeEvent.clientY,
+      pickMesh,
+      assets,
+    );
+    if (fromRaycast) return fromRaycast;
+  }
+
   const fromAll = resolveInstancedAssetFromIntersections(
     assets,
     event.intersections,
@@ -35,10 +63,7 @@ function resolveAsset(
   let instanceId = event.instanceId;
   if (instanceId === undefined) {
     for (const hit of event.intersections) {
-      if (
-        hit.instanceId !== undefined &&
-        hit.object === event.object
-      ) {
+      if (hit.instanceId !== undefined && hit.object === event.object) {
         instanceId = hit.instanceId;
         break;
       }
@@ -48,14 +73,22 @@ function resolveAsset(
   return assets[instanceId] ?? null;
 }
 
-export function SceneAssetPick({
-  assets,
-  onSelect,
-  onHover,
-  onContextPick,
-}: SceneAssetPickProps) {
+export const SceneAssetPick = forwardRef<
+  THREE.InstancedMesh | null,
+  SceneAssetPickProps
+>(function SceneAssetPick(
+  { assets, xrayShell = false, onSelect, onContextPick },
+  forwardedRef,
+) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { raycaster, camera, gl } = useThree();
   const material = useMemo(() => getAssetPickMaterial(), []);
+  const hitGeometry = xrayShell
+    ? SHARED_ASSET_HIT_SPHERE_XRAY
+    : SHARED_ASSET_HIT_SPHERE;
+
+  useImperativeHandle(forwardedRef, () => meshRef.current, [assets.length]);
+
   useLayoutEffect(() => {
     const mesh = meshRef.current;
     if (!mesh || assets.length === 0) return;
@@ -77,18 +110,31 @@ export function SceneAssetPick({
     }
 
     mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+    mesh.raycast = THREE.InstancedMesh.prototype.raycast;
   }, [assets]);
+
+  const resolveAtEvent = (e: ThreeEvent<MouseEvent | PointerEvent>) =>
+    resolveAssetFromEvent(
+      assets,
+      meshRef.current,
+      e,
+      raycaster,
+      camera,
+      gl.domElement,
+      xrayShell,
+    );
 
   const pointerHandlers = {
     onClick: (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
-      const asset = resolveAsset(assets, e);
+      const asset = resolveAtEvent(e);
       if (asset) onSelect(asset.id);
     },
     onContextMenu: (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
       e.nativeEvent.preventDefault();
-      const asset = resolveAsset(assets, e);
+      const asset = resolveAtEvent(e);
       if (!asset || !onContextPick) return;
       onContextPick({
         position: asset.position,
@@ -102,15 +148,10 @@ export function SceneAssetPick({
     },
     onPointerOver: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      const asset = resolveAsset(assets, e);
-      if (asset) {
-        onHover(asset.id);
-        document.body.style.cursor = "pointer";
-      }
+      document.body.style.cursor = "pointer";
     },
     onPointerOut: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      onHover(null);
       document.body.style.cursor = "auto";
     },
   };
@@ -119,11 +160,12 @@ export function SceneAssetPick({
 
   return (
     <instancedMesh
+      key={xrayShell ? "pick-xray" : "pick-solid"}
       ref={meshRef}
-      args={[SHARED_ASSET_HIT_SPHERE, material, assets.length]}
+      args={[hitGeometry, material, Math.max(assets.length, 1)]}
       frustumCulled={false}
-      renderOrder={25}
+      renderOrder={30}
       {...pointerHandlers}
     />
   );
-}
+});

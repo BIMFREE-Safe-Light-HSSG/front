@@ -35,10 +35,18 @@ export const SHARED_ASSET_HIT_SPHERE = new THREE.SphereGeometry(
   10,
 );
 
+/** 반투명 shell 관통 클릭 — pick 여유 확대 */
+export const SHARED_ASSET_HIT_SPHERE_XRAY = new THREE.SphereGeometry(
+  0.82,
+  10,
+  10,
+);
+
 const pickMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0,
   depthWrite: false,
+  depthTest: false,
 });
 
 export function getAssetPickMaterial(): THREE.MeshBasicMaterial {

@@ -160,10 +160,17 @@ function AssetPointsLod({
     return () => geometry.dispose();
   }, [geometry]);
 
+  const pointsRef = useRef<THREE.Points>(null);
+
+  useLayoutEffect(() => {
+    const points = pointsRef.current;
+    if (points) points.raycast = () => {};
+  }, [geometry]);
+
   if (assets.length === 0) return null;
 
   return (
-    <points geometry={geometry} frustumCulled renderOrder={11}>
+    <points ref={pointsRef} geometry={geometry} frustumCulled={false} renderOrder={11}>
       <pointsMaterial
         size={0.22}
         vertexColors

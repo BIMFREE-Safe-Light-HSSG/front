@@ -27,6 +27,10 @@ export type AssetSpotProps = {
   highlighted?: boolean;
   dimmed?: boolean;
   interactive?: boolean;
+  /** 반투명 shell 시 hit 구 확대 */
+  enlargedPick?: boolean;
+  /** SceneAssetPick이 클릭·호버 담당 */
+  unifiedPick?: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
   onContextPick?: (target: SceneContextTarget) => void;
@@ -57,6 +61,8 @@ function FacilityAssetSpot({
   highlighted = false,
   dimmed = false,
   interactive = true,
+  enlargedPick = false,
+  unifiedPick = false,
   onSelect,
   onHover,
   onContextPick,
@@ -172,8 +178,8 @@ function FacilityAssetSpot({
     if (!hit) return;
     hit.renderOrder = 20;
     hit.userData.assetId = asset.id;
-    if (!interactive) hit.raycast = () => {};
-  }, [interactive, asset.id]);
+    if (!interactive || unifiedPick) hit.raycast = () => {};
+  }, [interactive, unifiedPick, asset.id]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
@@ -239,9 +245,11 @@ function FacilityAssetSpot({
         ref={hitRef}
         material={hitMaterial}
         renderOrder={20}
-        {...(interactive ? bindPointer : {})}
+        {...(interactive && !unifiedPick ? bindPointer : {})}
       >
-        <sphereGeometry args={[HIT_RADIUS, 16, 16]} />
+        <sphereGeometry
+          args={[enlargedPick ? HIT_RADIUS * 1.38 : HIT_RADIUS, 16, 16]}
+        />
       </mesh>
       <mesh renderOrder={12} material={coreMaterial}>
         <sphereGeometry args={[coreRadius, 24, 24]} />
