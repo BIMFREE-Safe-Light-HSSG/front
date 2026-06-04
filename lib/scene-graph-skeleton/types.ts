@@ -1,4 +1,5 @@
 import type { FireIncident } from "@/lib/fire-incidents/types"
+import type { Occupant } from "@/lib/occupants/types"
 
 export type Vec2 = [number, number]
 export type Vec3 = [number, number, number]
@@ -56,6 +57,7 @@ export type SceneGraphSkeleton = {
     inspection_history?: AssetInspectionRecord[]
     /** 시설관리자가 등록한 화재 위치 (API·데모 JSON) */
     fire_incidents?: FireIncident[]
+    occupants?: Occupant[]
   }
 }
 

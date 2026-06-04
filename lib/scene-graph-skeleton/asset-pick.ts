@@ -1,6 +1,7 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import type * as THREE from "three";
 
+import { isRouteAssetClass } from "./route-assets";
 import { isStructuralAssetClass } from "./structural-assets";
 import type { FacilityAssetRef } from "./types";
 
@@ -8,7 +9,9 @@ import type { FacilityAssetRef } from "./types";
 export function listFacilityPickAssets(
   assets: FacilityAssetRef[],
 ): FacilityAssetRef[] {
-  return assets.filter((asset) => !isStructuralAssetClass(asset.class));
+  return assets.filter(
+    (asset) => !isStructuralAssetClass(asset.class) && !isRouteAssetClass(asset.class),
+  );
 }
 
 /** Instanced pick mesh (`SceneAssetPick`) */

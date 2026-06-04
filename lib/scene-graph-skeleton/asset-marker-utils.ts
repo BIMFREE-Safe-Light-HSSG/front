@@ -1,3 +1,4 @@
+import { isRouteAssetClass } from "./route-assets";
 import { isStructuralAssetClass } from "./structural-assets";
 import type { FacilityAssetRef } from "./types";
 
@@ -16,7 +17,7 @@ export type AssetMarkerInteractionState = {
 
 /** 구·링 마커용 (door/window 등 구조 mesh 제외). */
 export function isInstancedMarkerEligible(asset: FacilityAssetRef): boolean {
-  return !isStructuralAssetClass(asset.class);
+  return !isStructuralAssetClass(asset.class) && !isRouteAssetClass(asset.class);
 }
 
 /** Full AssetSpot (rings, pulse, useFrame) — keep count low. */

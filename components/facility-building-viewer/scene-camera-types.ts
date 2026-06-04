@@ -36,9 +36,6 @@ export const FIREFIGHTER_LAYER_VISIBILITY: ViewerLayerVisibility = {
   fires: true,
 }
 
-/** @deprecated FIREFIGHTER_LAYER_VISIBILITY 사용 */
-export const STRUCTURAL_LAYER_VISIBILITY = FIREFIGHTER_LAYER_VISIBILITY
-
 /** subtle: 선택 시 타깃만 살짝 팬 · medium: 포커스 버튼 · full: 프리셋 */
 export type CameraFocusIntensity = "subtle" | "medium" | "full"
 

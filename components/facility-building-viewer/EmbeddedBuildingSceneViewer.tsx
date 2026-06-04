@@ -73,6 +73,11 @@ import {
   zoneIdsContainingFireIncidents,
 } from "@/lib/scene-graph-skeleton/assets";
 import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
+import { parseOccupantsFromSceneGraph } from "@/lib/occupants/parse";
+import {
+  collectRoutePaths,
+  filterOutRouteAssets,
+} from "@/lib/scene-graph-skeleton/route-assets";
 import {
   filterAssetsForViewerMode,
   isStructuralAssetClass,
@@ -254,6 +259,7 @@ function toSkeletonDocument(sceneGraph: SceneGraph): SceneGraphSkeleton {
   const assets = [...rawAssets, ...nodeAssets];
   const inspection_history = parseInspectionHistory(raw.inspection_history);
   const fire_incidents = parseFireIncidentsFromSceneGraph(raw);
+  const occupants = parseOccupantsFromSceneGraph(raw);
 
   return {
     building_id: sceneGraph.building_name || sceneGraph.building_id,
@@ -263,6 +269,7 @@ function toSkeletonDocument(sceneGraph: SceneGraph): SceneGraphSkeleton {
       ...(assets.length > 0 ? { assets } : {}),
       ...(inspection_history ? { inspection_history } : {}),
       ...(fire_incidents.length > 0 ? { fire_incidents } : {}),
+      ...(occupants.length > 0 ? { occupants } : {}),
     },
   };
 }
@@ -492,7 +499,7 @@ export function EmbeddedBuildingSceneViewer({
     const incidents = await fetchBuildingFireIncidents(buildingId, {
       accessToken: token,
       job: user?.job ?? null,
-      sceneGraphSeed: doc.scene_graph.fire_incidents,
+      sceneGraphSeed: doc.scene_graph,
     });
     setFireIncidents(incidents);
     setSelectedFireId(null);
@@ -525,8 +532,12 @@ export function EmbeddedBuildingSceneViewer({
     setSelectedAssetId(null);
   }, [responseActive]);
 
+  const routePaths = useMemo(() => (doc ? collectRoutePaths(doc) : []), [doc]);
+  const occupants = useMemo(() => doc?.scene_graph.occupants ?? [], [doc]);
+
   const canvasAssets = useMemo(() => {
-    const modeFiltered = filterAssetsForViewerMode(assets, enableFacilityTools);
+    const withoutRoutes = filterOutRouteAssets(assets);
+    const modeFiltered = filterAssetsForViewerMode(withoutRoutes, enableFacilityTools);
     if (!enableFacilityTools) {
       return modeFiltered;
     }
@@ -1311,6 +1322,8 @@ export function EmbeddedBuildingSceneViewer({
       <BuildingSceneCanvas
         zones={zones}
         assets={canvasAssets}
+        routePaths={routePaths}
+        occupants={occupants}
         selectedZoneId={selectedZoneId}
         selectedAssetId={canvasSelectedAssetId}
         hoveredAssetId={canvasHoveredAssetId}

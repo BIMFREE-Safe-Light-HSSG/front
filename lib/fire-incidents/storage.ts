@@ -55,11 +55,28 @@ function normalizeSeverity(value: unknown): FireIncident["severity"] {
   return "high";
 }
 
-function parseIncident(raw: unknown): FireIncident | null {
+function parseIncident(raw: unknown, assumeFire = false): FireIncident | null {
   if (typeof raw !== "object" || raw === null) return null;
   const item = raw as Record<string, unknown>;
   const position = toVec3(item.position);
   if (typeof item.id !== "string" || !position) return null;
+
+  const typeKey =
+    typeof item.type === "string" ? item.type.trim().toUpperCase() : undefined;
+  if (typeKey) {
+    const occupantTypes = new Set([
+      "OCCUPANT",
+      "OCCUPANTS",
+      "OCCPUANT",
+      "OCCPUANTS",
+      "PERSON",
+      "HUMAN",
+    ]);
+    if (occupantTypes.has(typeKey)) return null;
+    if (!assumeFire && typeKey !== "FIRE" && typeKey !== "INCIDENT") return null;
+  } else if (!assumeFire) {
+    return null;
+  }
 
   const status = typeof item.status === "string" ? item.status.toUpperCase() : "ACTIVE";
   if (status !== "ACTIVE") return null;
@@ -109,7 +126,9 @@ export function loadFireIncidents(buildingId: string): FireIncident[] {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map(parseIncident).filter((item): item is FireIncident => Boolean(item));
+    return parsed
+      .map((item) => parseIncident(item, true))
+      .filter((item): item is FireIncident => Boolean(item));
   } catch {
     return [];
   }
@@ -126,9 +145,27 @@ export function saveFireIncidents(buildingId: string, incidents: FireIncident[])
   );
 }
 
+function ingestIncidents(
+  parsed: FireIncident[],
+  seen: Set<string>,
+  list: unknown[],
+  assumeFire: boolean,
+) {
+  for (const raw of list) {
+    const incident = parseIncident(raw, assumeFire);
+    if (!incident || seen.has(incident.id)) continue;
+    seen.add(incident.id);
+    parsed.push(incident);
+  }
+}
+
 export function parseFireIncidentsFromSceneGraph(raw: unknown): FireIncident[] {
+  const parsed: FireIncident[] = [];
+  const seen = new Set<string>();
+
   if (Array.isArray(raw)) {
-    return raw.map(parseIncident).filter((item): item is FireIncident => Boolean(item));
+    ingestIncidents(parsed, seen, raw, true);
+    return parsed;
   }
 
   if (typeof raw !== "object" || raw === null) {
@@ -136,21 +173,20 @@ export function parseFireIncidentsFromSceneGraph(raw: unknown): FireIncident[] {
   }
 
   const item = raw as Record<string, unknown>;
-  const candidates: unknown[] = [];
 
-  for (const key of ["fire_incidents", "incidents", "items"]) {
-    candidates.push(...collectIncidentCandidates(item[key]));
-  }
+  ingestIncidents(parsed, seen, collectIncidentCandidates(item.fire_incidents), true);
+  ingestIncidents(parsed, seen, collectIncidentCandidates(item.incidents), true);
+  ingestIncidents(parsed, seen, collectIncidentCandidates(item.items), false);
 
   const overlays = item.overlays;
   if (typeof overlays === "object" && overlays !== null) {
     const overlayRecord = overlays as Record<string, unknown>;
-    for (const key of ["fire_incidents", "incidents", "items"]) {
-      candidates.push(...collectIncidentCandidates(overlayRecord[key]));
-    }
+    ingestIncidents(parsed, seen, collectIncidentCandidates(overlayRecord.fire_incidents), true);
+    ingestIncidents(parsed, seen, collectIncidentCandidates(overlayRecord.incidents), true);
+    ingestIncidents(parsed, seen, collectIncidentCandidates(overlayRecord.items), false);
   }
 
-  return candidates.map(parseIncident).filter((incident): incident is FireIncident => Boolean(incident));
+  return parsed;
 }
 
 export function resolveFireIncidents(

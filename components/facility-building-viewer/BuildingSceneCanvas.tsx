@@ -15,6 +15,8 @@ import { FireIncidentsInstanced } from "@/components/facility-building-viewer/Fi
 import { AdaptiveSceneGrid } from "@/components/facility-building-viewer/AdaptiveSceneGrid";
 import { MergedBuildingSlab } from "@/components/facility-building-viewer/MergedBuildingSlab";
 import { MergedZoneShell } from "@/components/facility-building-viewer/MergedZoneShell";
+import { OccupantsInstanced } from "@/components/facility-building-viewer/OccupantsInstanced";
+import { RoutePathsMesh } from "@/components/facility-building-viewer/RoutePathsMesh";
 import {
   SceneEnvironment,
   type ViewerSceneTheme,
@@ -45,6 +47,8 @@ import {
 } from "@/lib/scene-graph-skeleton/zone-geometry";
 import type { SceneBounds } from "@/lib/scene-graph-skeleton/bounds";
 import type { FireIncident } from "@/lib/fire-incidents/types";
+import type { Occupant } from "@/lib/occupants/types";
+import type { RoutePath } from "@/lib/scene-graph-skeleton/route-assets";
 import type {
   FacilityAssetRef,
   Vec3,
@@ -54,6 +58,8 @@ import type {
 export type BuildingSceneCanvasProps = {
   zones: ZoneNode[];
   assets: FacilityAssetRef[];
+  routePaths?: RoutePath[];
+  occupants?: Occupant[];
   selectedZoneId: string | null;
   selectedAssetId: string | null;
   hoveredAssetId: string | null;
@@ -383,6 +389,8 @@ function ZonePanel({
 function SceneContent({
   zones,
   assets,
+  routePaths = [],
+  occupants = [],
   selectedZoneId,
   selectedAssetId,
   hoveredAssetId,
@@ -421,6 +429,9 @@ function SceneContent({
   const showFacility = layerVisibility.facility;
   const showStructure = layerVisibility.structure;
   const showFires = layerVisibility.fires ?? true;
+  const showOccupants =
+    occupants.length > 0 && (layerVisibility.fires || layerVisibility.facility);
+  const showRoutes = routePaths.length > 0 && layerVisibility.structure;
   const shellSlabVisible = showZoneMeshes && zones.length > 0;
   /** 반투명 shell일 때만 시설(문·창 제외) 클릭·우클릭 pick */
   const facilityAssetPickEnabled =
@@ -608,6 +619,9 @@ function SceneContent({
           })}
         </group>
       ) : null}
+      {showRoutes ? (
+        <RoutePathsMesh paths={routePaths} dimmed={searchHighlightActive} />
+      ) : null}
       {showStructure ? (
         <group>
           {structuralAssets.map((asset) => {
@@ -656,6 +670,7 @@ function SceneContent({
           onSelect={() => {}}
         />
       ) : null}
+      {showOccupants ? <OccupantsInstanced occupants={occupants} /> : null}
       {showFires ? (
         <group>
           <FireIncidentsInstanced
