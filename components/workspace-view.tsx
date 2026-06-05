@@ -438,9 +438,6 @@ export default function WorkspaceView() {
         </div>
       </div>
 
-      <div className="absolute left-10 top-1/2 -translate-y-1/2 font-black text-[12rem] text-red-900/[0.02] select-none pointer-events-none rotate-90 uppercase">
-        Facet
-      </div>
 
       <style jsx global>{`
         @keyframes blob {
