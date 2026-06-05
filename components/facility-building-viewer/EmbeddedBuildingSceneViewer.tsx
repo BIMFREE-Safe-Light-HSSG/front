@@ -10,6 +10,7 @@ import {
   Flame,
   Loader2,
   Plus,
+  Route,
   Search,
   Trash2,
   X,
@@ -74,10 +75,23 @@ import {
 } from "@/lib/scene-graph-skeleton/assets";
 import { parseInspectionHistory } from "@/lib/scene-graph-skeleton/inspection-history";
 import { parseOccupantsFromSceneGraph } from "@/lib/occupants/parse";
+import type { Occupant } from "@/lib/occupants/types";
+import { ViewerRescueNavControls } from "@/components/facility-building-viewer/ViewerRescueNavControls";
 import {
   collectRoutePaths,
   filterOutRouteAssets,
+  type RoutePath,
 } from "@/lib/scene-graph-skeleton/route-assets";
+import {
+  isRealtimeNavConfigured,
+  realtimeNavPathToRoutePath,
+  startRealtimeNavSession,
+  updateRealtimeNavRescuer,
+  updateRealtimeNavVictim,
+  fetchRealtimeNavState,
+} from "@/lib/realtime-nav/api";
+import { fetchNavRoomNodes, nearestNavNodeToZone } from "@/lib/realtime-nav/nav-nodes";
+import { buildNavSessionFromScene, resolveOccupantRole } from "@/lib/realtime-nav/scene-mapping";
 import {
   filterAssetsForViewerMode,
   isStructuralAssetClass,
@@ -427,8 +441,21 @@ export function EmbeddedBuildingSceneViewer({
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
   const [assetName, setAssetName] = useState("");
   const [assetSubmitting, setAssetSubmitting] = useState(false);
+  const [rescueNavPanelOpen, setRescueNavPanelOpen] = useState(true);
+  const [rescuerPlacementActive, setRescuerPlacementActive] = useState(false);
+  const [victimPlacementActive, setVictimPlacementActive] = useState(false);
+  const [rescuerNavNodeId, setRescuerNavNodeId] = useState<string | null>(null);
+  const [rescuerZoneLabel, setRescuerZoneLabel] = useState<string | null>(null);
+  const [victimNavNodeId, setVictimNavNodeId] = useState<string | null>(null);
+  const [victimZoneLabel, setVictimZoneLabel] = useState<string | null>(null);
+  const [victimPlacementPosition, setVictimPlacementPosition] = useState<Vec3 | null>(null);
+  const [rescueNavRoute, setRescueNavRoute] = useState<RoutePath | null>(null);
+  const [rescueNavLoading, setRescueNavLoading] = useState(false);
+  const [rescueNavStatus, setRescueNavStatus] = useState<string | null>(null);
+  const [rescueNavError, setRescueNavError] = useState<string | null>(null);
 
   const canManageFires = enableFacilityTools && Boolean(buildingId);
+  const firefighterNavTools = !enableFacilityTools && isRealtimeNavConfigured();
   const firefighterZoneView = !enableFacilityTools;
   const showFireLayer = Boolean(buildingId);
   /** 시설 페이지 「Activate Response」와 연동 */
@@ -532,8 +559,256 @@ export function EmbeddedBuildingSceneViewer({
     setSelectedAssetId(null);
   }, [responseActive]);
 
-  const routePaths = useMemo(() => (doc ? collectRoutePaths(doc) : []), [doc]);
   const occupants = useMemo(() => doc?.scene_graph.occupants ?? [], [doc]);
+
+  useEffect(() => {
+    setRescueNavPanelOpen(true);
+    setRescuerPlacementActive(false);
+    setVictimPlacementActive(false);
+    setRescuerNavNodeId(null);
+    setRescuerZoneLabel(null);
+    setVictimNavNodeId(null);
+    setVictimZoneLabel(null);
+    setVictimPlacementPosition(null);
+    setRescueNavRoute(null);
+    setRescueNavStatus(null);
+    setRescueNavError(null);
+  }, [buildingId]);
+
+  const applyNavZonePlacement = useCallback(
+    async (
+      zoneId: string,
+      role: "rescuer" | "victim",
+    ) => {
+      const zone = zones.find((item) => item.id === zoneId);
+      if (!zone) return;
+
+      setRescueNavError(null);
+      try {
+        const navRooms = await fetchNavRoomNodes();
+        const navNode = nearestNavNodeToZone(zone, navRooms);
+        if (!navNode) {
+          setRescueNavError("선택한 구역에 대응하는 nav room을 찾지 못했습니다.");
+          return;
+        }
+
+        if (role === "rescuer") {
+          setRescuerNavNodeId(navNode.id);
+          setRescuerZoneLabel(zone.name);
+          setRescuerPlacementActive(false);
+        } else {
+          setVictimNavNodeId(navNode.id);
+          setVictimZoneLabel(zone.name);
+          setVictimPlacementPosition(zone.geometry.center);
+          setVictimPlacementActive(false);
+        }
+
+        setSelectedZoneId(zoneId);
+        setSelectedAssetId(null);
+        setSelectedFireId(null);
+
+        const sessionNodes = buildNavSessionFromScene({
+          fireIncidents,
+          occupants,
+          zones,
+          navRooms,
+          rescuerNodeId: role === "rescuer" ? navNode.id : rescuerNavNodeId,
+          victimNodeId: role === "victim" ? navNode.id : victimNavNodeId,
+        });
+
+        if (sessionNodes) {
+          await startRealtimeNavSession({ ...sessionNodes, reset_clock: false });
+        } else {
+          try {
+            await fetchRealtimeNavState();
+            if (role === "rescuer") {
+              await updateRealtimeNavRescuer(navNode.id);
+            } else {
+              await updateRealtimeNavVictim(navNode.id);
+            }
+          } catch {
+            /* 세션 없음 — 경로 탐색 시 POST */
+          }
+        }
+
+        if (role === "rescuer") {
+          setRescueNavStatus(`소방대원 시작 위치: ${zone.name} (${navNode.id})`);
+        } else {
+          setRescueNavStatus(`피해자 위치: ${zone.name} (${navNode.id})`);
+        }
+      } catch (error) {
+        setRescueNavError(
+          error instanceof Error
+            ? error.message
+            : role === "rescuer"
+              ? "소방대원 위치 설정에 실패했습니다."
+              : "피해자 위치 설정에 실패했습니다.",
+        );
+      }
+    },
+    [
+      zones,
+      fireIncidents,
+      occupants,
+      rescuerNavNodeId,
+      victimNavNodeId,
+    ],
+  );
+
+  const handleCanvasZoneSelect = useCallback(
+    (zoneId: string | null) => {
+      if (firePlacementActive) return;
+
+      if (zoneId && rescuerPlacementActive && firefighterNavTools) {
+        void applyNavZonePlacement(zoneId, "rescuer");
+        return;
+      }
+
+      if (zoneId && victimPlacementActive && firefighterNavTools) {
+        void applyNavZonePlacement(zoneId, "victim");
+        return;
+      }
+
+      setSelectedZoneId(zoneId);
+      if (zoneId !== null) {
+        setSelectedAssetId(null);
+        setSelectedFireId(null);
+      }
+    },
+    [
+      firePlacementActive,
+      rescuerPlacementActive,
+      victimPlacementActive,
+      firefighterNavTools,
+      applyNavZonePlacement,
+    ],
+  );
+
+  const handleToggleRescueNavPanel = useCallback(() => {
+    setRescueNavPanelOpen((open) => {
+      if (open) {
+        setRescuerPlacementActive(false);
+        setVictimPlacementActive(false);
+      }
+      return !open;
+    });
+  }, []);
+
+  const handleToggleRescuerPlacement = useCallback(() => {
+    setRescueNavError(null);
+    setRescuerPlacementActive((value) => {
+      if (!value) setVictimPlacementActive(false);
+      return !value;
+    });
+  }, []);
+
+  const handleToggleVictimPlacement = useCallback(() => {
+    setRescueNavError(null);
+    setVictimPlacementActive((value) => {
+      if (!value) {
+        setRescuerPlacementActive(false);
+        setLayerVisibility((layer) => ({ ...layer, fires: true }));
+      }
+      return !value;
+    });
+  }, []);
+
+  const handleRescuePathSearch = useCallback(async () => {
+    if (!firefighterNavTools) {
+      setRescueNavError("NEXT_PUBLIC_REALTIME_NAV_URL이 설정되지 않았습니다.");
+      return;
+    }
+
+    if (!rescuerNavNodeId) {
+      setRescueNavError("먼저 「소방대원 위치」로 구역을 지정하세요.");
+      return;
+    }
+
+    if (!victimNavNodeId && occupants.length === 0) {
+      setRescueNavError("「피해자 위치」를 지정하거나 scene graph occupant가 필요합니다.");
+      return;
+    }
+
+    if (fireIncidents.length === 0) {
+      setRescueNavError("화재 overlay가 없어 발원지를 찾을 수 없습니다.");
+      return;
+    }
+
+    setRescueNavLoading(true);
+    setRescueNavError(null);
+    setRescueNavStatus(null);
+
+    try {
+      const navRooms = await fetchNavRoomNodes();
+      const sessionNodes = buildNavSessionFromScene({
+        fireIncidents,
+        occupants,
+        zones,
+        navRooms,
+        rescuerNodeId: rescuerNavNodeId,
+        victimNodeId: victimNavNodeId,
+      });
+
+      if (!sessionNodes) {
+        setRescueNavError("화재·소방대·피해자를 nav graph room으로 매핑하지 못했습니다.");
+        return;
+      }
+
+      const state = await startRealtimeNavSession({ ...sessionNodes, reset_clock: true });
+      const route = realtimeNavPathToRoutePath(state);
+
+      if (!route) {
+        setRescueNavError(state.path.replan_reason || "안전한 구조 경로를 찾지 못했습니다.");
+        setRescueNavRoute(null);
+        return;
+      }
+
+      setRescueNavRoute(route);
+      setLayerVisibility((value) => ({ ...value, structure: true }));
+      setRescueNavStatus(
+        state.path.is_safe
+          ? `구조 경로 ${state.path.path.length}구간 · 안전 경로`
+          : `구조 경로 ${state.path.path.length}구간 · ${state.path.warning ?? "주의 경로"}`,
+      );
+    } catch (error) {
+      setRescueNavRoute(null);
+      setRescueNavError(
+        error instanceof Error ? error.message : "구조 경로 탐색에 실패했습니다.",
+      );
+    } finally {
+      setRescueNavLoading(false);
+    }
+  }, [
+    firefighterNavTools,
+    rescuerNavNodeId,
+    victimNavNodeId,
+    fireIncidents,
+    occupants,
+    zones,
+  ]);
+
+  const canvasOccupants = useMemo(() => {
+    if (!victimNavNodeId || !victimPlacementPosition) {
+      return occupants;
+    }
+
+    const withoutVictims = occupants.filter((item) => resolveOccupantRole(item) !== "victim");
+    const override: Occupant = {
+      id: "nav-victim-override",
+      position: victimPlacementPosition,
+      role: "victim",
+      label: "피해자 (지정)",
+      ...(victimZoneLabel ? { zone_name: victimZoneLabel } : {}),
+    };
+
+    return [...withoutVictims, override];
+  }, [occupants, victimNavNodeId, victimPlacementPosition, victimZoneLabel]);
+
+  const routePaths = useMemo(() => {
+    const staticPaths = doc ? collectRoutePaths(doc) : [];
+    if (rescueNavRoute) return [...staticPaths, rescueNavRoute];
+    return staticPaths;
+  }, [doc, rescueNavRoute]);
 
   const canvasAssets = useMemo(() => {
     const withoutRoutes = filterOutRouteAssets(assets);
@@ -1039,9 +1314,7 @@ export function EmbeddedBuildingSceneViewer({
           highlightZoneIds={highlightZoneIds}
           onSelectZone={(zoneId) => {
             if (firePlacementActive) return;
-            setSelectedZoneId(zoneId);
-            setSelectedAssetId(null);
-            setSelectedFireId(null);
+            handleCanvasZoneSelect(zoneId);
           }}
           onFocusZone={(zoneId) => {
             pushCamera({ type: "focus-zone", zoneId, intensity: "medium" });
@@ -1064,8 +1337,16 @@ export function EmbeddedBuildingSceneViewer({
         </h2>
       </div>
 
-      {enableFacilityTools || (showFireLayer && !canManageFires) ? (
+      {enableFacilityTools || (showFireLayer && !canManageFires) || firefighterNavTools ? (
         <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+          {firefighterNavTools ? (
+            <ViewerIconFab
+              active={rescueNavPanelOpen}
+              label="구조 경로 패널"
+              icon={Route}
+              onClick={handleToggleRescueNavPanel}
+            />
+          ) : null}
           {showFireLayer && !canManageFires ? (
             <ViewerIconFab
               active={firePanelOpen}
@@ -1103,6 +1384,21 @@ export function EmbeddedBuildingSceneViewer({
             </>
           ) : null}
         </div>
+      ) : null}
+
+      {firefighterNavTools && rescueNavPanelOpen ? (
+        <ViewerRescueNavControls
+          rescuerPlacementActive={rescuerPlacementActive}
+          victimPlacementActive={victimPlacementActive}
+          searchLoading={rescueNavLoading}
+          rescuerLabel={rescuerZoneLabel}
+          victimLabel={victimZoneLabel}
+          statusMessage={rescueNavStatus}
+          errorMessage={rescueNavError}
+          onToggleRescuerPlacement={handleToggleRescuerPlacement}
+          onToggleVictimPlacement={handleToggleVictimPlacement}
+          onSearchPath={() => void handleRescuePathSearch()}
+        />
       ) : null}
 
       {enableFacilityTools || showFireLayer ? (
@@ -1323,7 +1619,7 @@ export function EmbeddedBuildingSceneViewer({
         zones={zones}
         assets={canvasAssets}
         routePaths={routePaths}
-        occupants={occupants}
+        occupants={canvasOccupants}
         selectedZoneId={selectedZoneId}
         selectedAssetId={canvasSelectedAssetId}
         hoveredAssetId={canvasHoveredAssetId}
@@ -1344,14 +1640,7 @@ export function EmbeddedBuildingSceneViewer({
         firefighterZoneView={firefighterZoneView}
         fireZoneIds={fireZoneIds}
         sceneTheme={isEmergency ? "emergency" : "day"}
-        onSelectZone={(id) => {
-          if (firePlacementActive) return;
-          setSelectedZoneId(id);
-          if (id !== null) {
-            setSelectedAssetId(null);
-            setSelectedFireId(null);
-          }
-        }}
+        onSelectZone={handleCanvasZoneSelect}
         onSelectAsset={handleSelectAsset}
         onHoverAsset={handleHoverAsset}
         onContextPick={enableFacilityTools ? handleCanvasContextPick : undefined}

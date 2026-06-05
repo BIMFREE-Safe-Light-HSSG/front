@@ -1,4 +1,4 @@
-import type { Occupant } from "@/lib/occupants/types";
+import type { Occupant, OccupantRole } from "@/lib/occupants/types";
 import type { Vec3 } from "@/lib/scene-graph-skeleton/types";
 
 const OCCUPANT_TYPES = new Set([
@@ -71,6 +71,27 @@ function collectOverlayCandidates(value: unknown): unknown[] {
   return [];
 }
 
+function parseOccupantRole(raw: Record<string, unknown>): OccupantRole | undefined {
+  const roleRaw =
+    typeof raw.role === "string"
+      ? raw.role
+      : typeof raw.kind === "string"
+        ? raw.kind
+        : typeof raw.label === "string"
+          ? raw.label
+          : typeof raw.name === "string"
+            ? raw.name
+            : "";
+
+  const key = roleRaw.trim().toUpperCase();
+  if (!key) return undefined;
+  if (key.includes("VICTIM") || key.includes("피해자")) return "victim";
+  if (key.includes("RESCUER") || key.includes("FIREFIGHTER") || key.includes("소방") || key.includes("구조")) {
+    return "rescuer";
+  }
+  return "other";
+}
+
 function parseOccupant(raw: unknown, assumeOccupant = false): Occupant | null {
   if (!isRecord(raw)) return null;
 
@@ -88,6 +109,8 @@ function parseOccupant(raw: unknown, assumeOccupant = false): Occupant | null {
   const status = typeof raw.status === "string" ? raw.status.toUpperCase() : "ACTIVE";
   if (status !== "ACTIVE") return null;
 
+  const role = parseOccupantRole(raw);
+
   return {
     id: raw.id,
     position,
@@ -102,6 +125,7 @@ function parseOccupant(raw: unknown, assumeOccupant = false): Occupant | null {
       : typeof raw.name === "string"
         ? { label: raw.name }
         : {}),
+    ...(role ? { role } : {}),
   };
 }
 

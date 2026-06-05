@@ -20,6 +20,10 @@ yarn-error.log*
 # env files
 .env*
 
+# RunPod realtime-nav API (deployed via Docker)
+services/realtime-nav-api/requirements.txt
+services/realtime-nav-api/README.md
+
 # vercel
 .vercel
 
