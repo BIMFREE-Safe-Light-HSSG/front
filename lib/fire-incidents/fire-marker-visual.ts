@@ -24,6 +24,12 @@ export const FIRE_SEVERITY_COLOR = {
   },
 } as const;
 
+/** 화재 마커 전체 표시 스케일 */
+export const FIRE_MARKER_SCALE = 1.45;
+
+export const FIRE_FLAME_SCALE = 2.65 * FIRE_MARKER_SCALE;
+export const FIRE_INSTANCED_FLAME_SCALE = 1.85 * FIRE_MARKER_SCALE;
+
 export type FireFlamePalette =
   (typeof FIRE_SEVERITY_COLOR)[keyof typeof FIRE_SEVERITY_COLOR];
 
@@ -72,6 +78,9 @@ export function getFireFlameTexture(
   return texture;
 }
 
-export const FIRE_PICK_SPHERE = new THREE.SphereGeometry(0.85, 8, 8);
+export const FIRE_PICK_SPHERE = new THREE.SphereGeometry(0.85 * FIRE_MARKER_SCALE, 8, 8);
 
-export const FIRE_BILLBOARD_PLANE = new THREE.PlaneGeometry(1.15, 1.75);
+export const FIRE_BILLBOARD_PLANE = new THREE.PlaneGeometry(
+  1.15 * FIRE_MARKER_SCALE,
+  1.75 * FIRE_MARKER_SCALE,
+);

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import {
   FIRE_BILLBOARD_PLANE,
+  FIRE_INSTANCED_FLAME_SCALE,
   FIRE_PICK_SPHERE,
   FIRE_SEVERITY_COLOR,
   getFireFlameTexture,
@@ -16,7 +17,6 @@ import type { FireIncident, FireSeverity } from "@/lib/fire-incidents/types";
 
 const matrixScratch = new THREE.Object3D();
 const SEVERITIES: FireSeverity[] = ["low", "medium", "high"];
-const STATIC_FLAME_SCALE = 1.85;
 
 const pickMaterial = new THREE.MeshBasicMaterial({
   transparent: true,
@@ -108,7 +108,7 @@ function SeverityFireBatch({
         incident.position[2],
       );
       matrixScratch.position.set(x, y + 0.5, z);
-      matrixScratch.scale.setScalar(STATIC_FLAME_SCALE);
+      matrixScratch.scale.setScalar(FIRE_INSTANCED_FLAME_SCALE);
       matrixScratch.lookAt(camera.position);
       matrixScratch.updateMatrix();
       mesh.setMatrixAt(i, matrixScratch.matrix);

@@ -22,6 +22,7 @@ import {
   type SceneContextTarget,
 } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import { ViewerCanvasNavBar } from "@/components/facility-building-viewer/ViewerCanvasNavBar";
+import { ViewerFloorSelect } from "@/components/facility-building-viewer/ViewerFloorSelect";
 import { ViewerMinimap } from "@/components/facility-building-viewer/ViewerMinimap";
 import { ViewerFireIncidentsPanel } from "@/components/facility-building-viewer/ViewerFireIncidentsPanel";
 import { ViewerInspectionHistoryPanel } from "@/components/facility-building-viewer/ViewerInspectionHistoryPanel";
@@ -35,7 +36,7 @@ import {
   type ViewerLayerVisibility,
   type ViewerShellDisplay,
 } from "@/components/facility-building-viewer/scene-camera-types";
-import { boundsFromSubset } from "@/lib/scene-graph-skeleton/bounds";
+import { boundsFromSubset, boundsFromZones } from "@/lib/scene-graph-skeleton/bounds";
 import {
   ViewerCanvasBadge,
   ViewerIconFab,
@@ -99,6 +100,16 @@ import {
 } from "@/lib/realtime-nav/rescue-nav-state";
 import { buildNavSessionFromScene, resolveOccupantRole } from "@/lib/realtime-nav/scene-mapping";
 import type { RealtimeNavState } from "@/lib/realtime-nav/api";
+import {
+  defaultFloorId,
+  filterAssetsByFloor,
+  filterFireIncidentsByFloor,
+  filterOccupantsByFloor,
+  filterRoutePathsByFloor,
+  filterZoneIdSetByFloor,
+  filterZonesByFloor,
+  parseFloorCatalog,
+} from "@/lib/scene-graph-skeleton/floors";
 import {
   filterAssetsForViewerMode,
   isStructuralAssetClass,
@@ -490,6 +501,7 @@ export function EmbeddedBuildingSceneViewer({
   const [shellDisplay, setShellDisplay] =
     useState<ViewerShellDisplay>(DEFAULT_SHELL_DISPLAY);
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null);
+  const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
 
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -497,9 +509,26 @@ export function EmbeddedBuildingSceneViewer({
   const rescueNavSimElapsedRef = useRef(0);
 
   const doc = useMemo(() => (sceneGraph ? toSkeletonDocument(sceneGraph) : null), [sceneGraph]);
-  const zones = doc?.scene_graph.nodes ?? [];
+  const allZones = doc?.scene_graph.nodes ?? [];
+  const floorCatalog = useMemo(
+    () => (sceneGraph ? parseFloorCatalog(rawSceneGraphNodes(sceneGraph)) : null),
+    [sceneGraph],
+  );
+  const visibleZones = useMemo(() => {
+    if (!floorCatalog || !selectedFloorId) return allZones;
+    return filterZonesByFloor(allZones, floorCatalog, selectedFloorId);
+  }, [allZones, floorCatalog, selectedFloorId]);
+  const visibleZoneIds = useMemo(
+    () => new Set(visibleZones.map((zone) => zone.id)),
+    [visibleZones],
+  );
+  const zones = visibleZones;
   const buildingInspectionHistory = doc?.scene_graph.inspection_history;
-  const assets = useMemo(() => (doc ? collectAssets(doc) : []), [doc]);
+  const allAssets = useMemo(() => (doc ? collectAssets(doc) : []), [doc]);
+  const assets = useMemo(() => {
+    if (!floorCatalog || !selectedFloorId) return allAssets;
+    return filterAssetsByFloor(allAssets, allZones, floorCatalog, selectedFloorId);
+  }, [allAssets, allZones, floorCatalog, selectedFloorId]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const assetClassOptions = useMemo(() => uniqueAssetClasses(assets), [assets]);
   const searchResults = useMemo(() => {
@@ -535,12 +564,22 @@ export function EmbeddedBuildingSceneViewer({
   const fireZoneIds = useMemo(() => {
     if (!firefighterZoneView) return undefined;
 
-    const ids = zoneIdsContainingFireIncidents(zones, fireIncidents);
+    const ids = zoneIdsContainingFireIncidents(allZones, fireIncidents);
     for (const zoneId of fireSpreadZoneIds) {
       ids.add(zoneId);
     }
+    if (selectedFloorId && floorCatalog) {
+      return filterZoneIdSetByFloor(ids, floorCatalog, selectedFloorId);
+    }
     return ids;
-  }, [firefighterZoneView, zones, fireIncidents, fireSpreadZoneIds]);
+  }, [
+    firefighterZoneView,
+    allZones,
+    fireIncidents,
+    fireSpreadZoneIds,
+    selectedFloorId,
+    floorCatalog,
+  ]);
 
   const reloadFireIncidents = useCallback(async () => {
     if (!showFireLayer || !buildingId || !doc) {
@@ -587,6 +626,32 @@ export function EmbeddedBuildingSceneViewer({
   }, [responseActive]);
 
   const occupants = useMemo(() => doc?.scene_graph.occupants ?? [], [doc]);
+  const visibleOccupants = useMemo(() => {
+    if (!floorCatalog || !selectedFloorId) return occupants;
+    return filterOccupantsByFloor(occupants, allZones, floorCatalog, selectedFloorId);
+  }, [occupants, allZones, floorCatalog, selectedFloorId]);
+
+  useEffect(() => {
+    if (!floorCatalog) {
+      setSelectedFloorId(null);
+      return;
+    }
+    setSelectedFloorId(
+      defaultFloorId(floorCatalog, { singleFloorDefault: !enableFacilityTools }),
+    );
+  }, [buildingId, floorCatalog, enableFacilityTools]);
+
+  useEffect(() => {
+    if (!selectedFloorId) return;
+
+    if (selectedZoneId && !visibleZoneIds.has(selectedZoneId)) {
+      setSelectedZoneId(null);
+    }
+    if (selectedAssetId) {
+      const asset = assets.find((item) => item.id === selectedAssetId);
+      if (!asset) setSelectedAssetId(null);
+    }
+  }, [selectedFloorId, visibleZoneIds, selectedZoneId, selectedAssetId, assets]);
 
   useEffect(() => {
     setRescueNavPanelOpen(true);
@@ -611,9 +676,9 @@ export function EmbeddedBuildingSceneViewer({
 
       try {
         const navNodes = await fetchAllNavNodes();
-        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, zones, navNodes));
+        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, allZones, navNodes));
       } catch {
-        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, zones, []));
+        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, allZones, []));
       }
 
       const applied = applyRescueNavState(state);
@@ -630,7 +695,7 @@ export function EmbeddedBuildingSceneViewer({
       setRescueNavStatus(applied.statusMessage);
       setRescueNavError(applied.errorMessage);
     },
-    [zones],
+    [allZones],
   );
 
   const refreshRescueNavFromServer = useCallback(
@@ -704,7 +769,7 @@ export function EmbeddedBuildingSceneViewer({
         const sessionNodes = buildNavSessionFromScene({
           fireIncidents,
           occupants,
-          zones,
+          zones: allZones,
           navRooms,
           rescuerNodeId: role === "rescuer" ? navNode.id : rescuerNavNodeId,
           victimNodeId: role === "victim" ? navNode.id : victimNavNodeId,
@@ -746,6 +811,7 @@ export function EmbeddedBuildingSceneViewer({
     },
     [
       zones,
+      allZones,
       fireIncidents,
       occupants,
       rescuerNavNodeId,
@@ -843,7 +909,7 @@ export function EmbeddedBuildingSceneViewer({
       const sessionNodes = buildNavSessionFromScene({
         fireIncidents,
         occupants,
-        zones,
+        zones: allZones,
         navRooms,
         rescuerNodeId: rescuerNavNodeId,
         victimNodeId: victimNavNodeId,
@@ -873,16 +939,22 @@ export function EmbeddedBuildingSceneViewer({
     victimNavNodeId,
     fireIncidents,
     occupants,
-    zones,
+    allZones,
     syncRescueNavState,
   ]);
 
+  const canvasFireIncidents = useMemo(() => {
+    if (!showFireLayer) return [];
+    if (!floorCatalog || !selectedFloorId) return fireIncidents;
+    return filterFireIncidentsByFloor(fireIncidents, allZones, floorCatalog, selectedFloorId);
+  }, [showFireLayer, fireIncidents, allZones, floorCatalog, selectedFloorId]);
+
   const canvasOccupants = useMemo(() => {
     if (!victimNavNodeId || !victimPlacementPosition) {
-      return occupants;
+      return visibleOccupants;
     }
 
-    const withoutVictims = occupants.filter((item) => resolveOccupantRole(item) !== "victim");
+    const withoutVictims = visibleOccupants.filter((item) => resolveOccupantRole(item) !== "victim");
     const override: Occupant = {
       id: "nav-victim-override",
       position: victimPlacementPosition,
@@ -892,13 +964,14 @@ export function EmbeddedBuildingSceneViewer({
     };
 
     return [...withoutVictims, override];
-  }, [occupants, victimNavNodeId, victimPlacementPosition, victimZoneLabel]);
+  }, [visibleOccupants, victimNavNodeId, victimPlacementPosition, victimZoneLabel]);
 
   const routePaths = useMemo(() => {
     const staticPaths = doc ? collectRoutePaths(doc) : [];
-    if (rescueNavRoute) return [...staticPaths, rescueNavRoute];
-    return staticPaths;
-  }, [doc, rescueNavRoute]);
+    const merged = rescueNavRoute ? [...staticPaths, rescueNavRoute] : staticPaths;
+    if (!floorCatalog || !selectedFloorId) return merged;
+    return filterRoutePathsByFloor(merged, allZones, floorCatalog, selectedFloorId);
+  }, [doc, rescueNavRoute, allZones, floorCatalog, selectedFloorId]);
 
   const canvasAssets = useMemo(() => {
     const withoutRoutes = filterOutRouteAssets(assets);
@@ -967,10 +1040,28 @@ export function EmbeddedBuildingSceneViewer({
     setCameraCommand({ seq: cameraSeqRef.current, action });
   }, []);
 
+  useEffect(() => {
+    if (!selectedFloorId || visibleZones.length === 0) return;
+
+    const bounds = boundsFromZones(visibleZones);
+    if (!bounds) return;
+
+    const timer = window.setTimeout(() => {
+      pushCamera({
+        type: "focus-bounds",
+        min: bounds.min,
+        max: bounds.max,
+        intensity: "medium",
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedFloorId, buildingId, visibleZones, pushCamera]);
+
   const fireRiskTarget = useMemo(() => {
     if (!selectedFireRisk) return null;
-    return resolveFireRiskTargetNodeId(zones, assets, selectedFireRisk.target_node_id);
-  }, [selectedFireRisk, zones, assets]);
+    return resolveFireRiskTargetNodeId(allZones, allAssets, selectedFireRisk.target_node_id);
+  }, [selectedFireRisk, allZones, allAssets]);
 
   const fireRiskZoneId = useMemo(
     () => fireRiskHighlightZoneId(fireRiskTarget),
@@ -1421,7 +1512,7 @@ export function EmbeddedBuildingSceneViewer({
     [buildingId, commitSceneGraphMutations, onFireIncidentsChange],
   );
 
-  if (!sceneGraph || status !== "ready" || zones.length === 0) {
+  if (!sceneGraph || status !== "ready" || allZones.length === 0) {
     return <ViewerMessage status={status} nodeCount={rawNodeCount} edgeCount={rawEdgeCount} />;
   }
 
@@ -1467,6 +1558,14 @@ export function EmbeddedBuildingSceneViewer({
         <h2 className="mt-1 truncate text-lg font-black uppercase tracking-tight text-white">
           {buildingName ?? sceneGraph.building_name ?? "Selected Building"}
         </h2>
+        {floorCatalog && floorCatalog.floors.length > 1 ? (
+          <ViewerFloorSelect
+            className="mt-3"
+            floors={floorCatalog.floors}
+            selectedFloorId={selectedFloorId}
+            onSelectFloor={setSelectedFloorId}
+          />
+        ) : null}
       </div>
 
       {enableFacilityTools || (showFireLayer && !canManageFires) || firefighterNavTools ? (
@@ -1759,7 +1858,7 @@ export function EmbeddedBuildingSceneViewer({
         draftPosition={firePlacementActive ? draftFirePosition : null}
         draftClass="화재"
         placementVariant={firePlacementActive ? "fire" : "default"}
-        fireIncidents={showFireLayer ? fireIncidents : []}
+        fireIncidents={canvasFireIncidents}
         selectedFireId={selectedFireId}
         onSelectFire={setSelectedFireId}
         layerVisibility={canvasLayerVisibility}

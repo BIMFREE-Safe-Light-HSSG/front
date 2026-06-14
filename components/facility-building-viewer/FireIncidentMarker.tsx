@@ -8,9 +8,7 @@ import * as THREE from "three";
 import { skeletonPointToThree } from "@/lib/scene-graph-skeleton/coordinates";
 import type { SceneContextTarget } from "@/components/facility-building-viewer/BuildingSceneCanvas";
 import type { FireIncident } from "@/lib/fire-incidents/types";
-
-/** 뷰어에서 화재 지점이 한눈에 들어오도록 전체 스케일 */
-const FLAME_SCALE = 2.65;
+import { FIRE_FLAME_SCALE } from "@/lib/fire-incidents/fire-marker-visual";
 
 /** 펄스·깜빡임 주기 (값이 작을수록 느림) */
 const PULSE_HZ = 2.1;
@@ -220,7 +218,7 @@ export function FireIncidentMarker({
     const flicker =
       0.92 + 0.1 * Math.sin(t * FLICKER_HZ) + 0.05 * Math.sin(t * FLICKER_HZ * 1.9);
     const pulse = 1 + 0.07 * Math.sin(t * PULSE_HZ);
-    const scale = FLAME_SCALE * (selected ? 1.12 : 1) * pulse * flicker;
+    const scale = FIRE_FLAME_SCALE * (selected ? 1.12 : 1) * pulse * flicker;
 
     if (groupRef.current) {
       groupRef.current.scale.setScalar(scale);
@@ -292,7 +290,7 @@ export function FireIncidentMarker({
         intensity={selected ? 2.2 : 1.5}
         distance={7}
         decay={2}
-        position={[0, 1.1 * FLAME_SCALE, 0]}
+        position={[0, 1.1 * FIRE_FLAME_SCALE, 0]}
       />
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
