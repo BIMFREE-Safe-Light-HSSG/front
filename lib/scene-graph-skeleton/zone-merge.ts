@@ -20,6 +20,7 @@ export type ZoneShellVisualState = {
   dimmed: boolean;
   firefighterZoneView: boolean;
   isFireZone: boolean;
+  fireRiskSelected?: boolean;
 };
 
 const shellColorScratch = new THREE.Color();
@@ -39,7 +40,14 @@ export function resolveZoneShellColor(
     dimmed,
     firefighterZoneView,
     isFireZone,
+    fireRiskSelected = false,
   } = state;
+
+  if (fireRiskSelected) {
+    shellColorScratch.set(0xfbbf24);
+    shellColorScratch.lerp(new THREE.Color(0xef4444), 0.35);
+    return shellColorScratch;
+  }
 
   if (firefighterZoneView) {
     if (isFireZone) {

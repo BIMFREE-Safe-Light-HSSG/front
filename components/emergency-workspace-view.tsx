@@ -7,10 +7,11 @@ import {
   Activity,
   AlertTriangle,
   Building2,
+  ClipboardList,
   Compass,
   Database,
-  Flame,
   Loader2,
+  ShieldAlert,
   Thermometer,
   Users,
 } from "lucide-react";
@@ -23,10 +24,12 @@ import {
   type ViewerBuilding,
 } from "@/app/api/viewer";
 import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
+import { ViewerFireRiskPanel } from "@/components/facility-building-viewer/ViewerFireRiskPanel";
+import { SidebarPanelFlip } from "@/components/facility/sidebar-panel-flip";
+import { WorkspaceBuildingPicker } from "@/components/facility/workspace-building-picker";
 import { EmergencyFireNotifications } from "@/components/emergency-fire-notifications";
 import { getStoredAuthUser } from "@/lib/auth/storage";
 import {
-  getBuildingActiveFireCount,
   sortBuildingsByFirePriority,
 } from "@/lib/fire-incidents/building-list";
 import type { SceneGraphFirePollResult } from "@/lib/fire-incidents/scene-graph-notifications";
@@ -36,6 +39,7 @@ import {
   isDemoBuildingId,
   mergeDemoWorkspace,
 } from "@/lib/facility-demo/seed";
+import { useFireRiskAssessment } from "@/lib/fire-risk-assessments/use-fire-risk-assessment";
 import { formatViewerDateTime } from "@/lib/format/datetime";
 import { getAxiosErrorStatus, handleUnauthorized } from "@/lib/http/errors";
 
@@ -70,6 +74,42 @@ export default function EmergencyWorkspaceView() {
 
   const nodeCount = sceneGraph?.scene_graph.nodes?.length ?? 0;
   const edgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
+
+  const applySceneGraphUpdate = useCallback((next: SceneGraph) => {
+    setSceneGraph(next);
+    setBuildings((current) =>
+      current.map((building) =>
+        building.id === next.building_id
+          ? {
+              ...building,
+              has_scene_graph: true,
+              latest_graph_created_at: next.created_at,
+            }
+          : building,
+      ),
+    );
+  }, []);
+
+  const {
+    fireRiskPanelOpen,
+    setFireRiskPanelOpen,
+    fireRiskLoading,
+    fireRiskError,
+    fireRiskResult,
+    selectedFireRiskId,
+    selectedFireRisk,
+    fireRiskFocusSeq,
+    canViewFireRiskResults,
+    handleFireRiskCheck,
+    handleSelectFireRisk,
+    handleViewFireRiskResults,
+    resetForBuildingChange,
+  } = useFireRiskAssessment({
+    selectedBuildingId,
+    sceneGraph,
+    sceneGraphStatus,
+    onSceneGraphUpdate: applySceneGraphUpdate,
+  });
 
   const handleSceneGraphPoll = useCallback(
     (result: SceneGraphFirePollResult) => {
@@ -232,6 +272,7 @@ export default function EmergencyWorkspaceView() {
     setSelectedBuildingId(buildingId);
     setSceneGraph(null);
     setSceneGraphStatus("loading");
+    resetForBuildingChange();
 
     if (isDemoBuildingId(buildingId)) {
       const graph = getDemoSceneGraph(buildingId);
@@ -328,12 +369,12 @@ export default function EmergencyWorkspaceView() {
               <p className="mt-3 text-sm text-zinc-600">관할: {user.jurisdiction.name}</p>
             ) : null}
             <p className="mt-2 max-w-xl text-sm text-zinc-500">
-              건물 구조를 살피고 구조 경로를 탐색할 수 있습니다.
+              건물 구조를 살피고 구조 경로를 탐색하며, Gemini 취약점검으로 화재 취약 구역을 확인할 수 있습니다.
             </p>
           </div>
         </header>
 
-        <div className="mb-6 grid min-h-[70vh] grid-cols-1 gap-6 lg:grid-cols-12">
+        <div className="grid min-h-[70vh] grid-cols-1 items-stretch gap-6 lg:grid-cols-12 lg:h-[70vh] lg:min-h-0">
           <div
             className="relative min-h-[520px] overflow-hidden rounded-[2rem] border border-white/60 bg-white/30 shadow-2xl lg:col-span-8"
             style={{
@@ -348,94 +389,117 @@ export default function EmergencyWorkspaceView() {
               buildingName={selectedBuilding?.name}
               districtName={selectedBuilding?.district_name}
               enableFacilityTools={false}
+              selectedFireRisk={selectedFireRisk}
+              fireRiskFocusSeq={fireRiskFocusSeq}
             />
           </div>
 
-          <div
-            className="flex flex-col gap-6 lg:col-span-4"
-          >
+          <div className="flex min-h-0 flex-col gap-6 lg:col-span-4 lg:h-full">
             <div
-              className="flex flex-1 flex-col rounded-[2rem] border border-white/60 bg-white/20 p-8"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white/20 p-8"
               style={{ backdropFilter: "blur(20px)" }}
             >
-              <EmergencyFireNotifications
-                pollBuildings={buildings}
-                onSceneGraphPoll={handleSceneGraphPoll}
-                onSelectBuilding={(buildingId) => void handleSelectBuilding(buildingId)}
-                className="mb-6"
-              />
-
-              <h3 className="font-black text-xs uppercase italic tracking-[0.3em] text-zinc-400">
-                관할 건물
-              </h3>
-
-              <div className="mt-6 flex-1 space-y-3 overflow-y-auto pr-1">
-                {buildings.length === 0 ? (
-                  <div className="rounded-xl border border-red-900/10 bg-white/30 p-5 text-sm text-zinc-500">
-                    접근 가능한 건물이 없습니다.
-                  </div>
+              <SidebarPanelFlip panelKey={fireRiskPanelOpen ? "fire-risk" : "building-list"}>
+                {fireRiskPanelOpen ? (
+                  <ViewerFireRiskPanel
+                    variant="embedded"
+                    open={fireRiskPanelOpen}
+                    loading={fireRiskLoading}
+                    error={fireRiskError}
+                    result={fireRiskResult}
+                    selectedRiskId={selectedFireRiskId}
+                    embeddedBackLabel="관할 건물"
+                    onClose={() => setFireRiskPanelOpen(false)}
+                    onSelectRisk={handleSelectFireRisk}
+                  />
                 ) : (
-                  sortedBuildings.map((building) => {
-                    const fireCount = getBuildingActiveFireCount(building);
-                    return (
-                      <button
-                        key={building.id}
-                        type="button"
-                        onClick={() => handleSelectBuilding(building.id)}
-                        className={`w-full rounded-xl border p-4 text-left transition-all ${selectedBuildingId === building.id
-                            ? "border-red-900/40 bg-white/60 shadow-sm"
-                            : fireCount > 0
-                              ? "border-red-500/35 bg-red-50/40 hover:bg-red-50/60"
-                              : "border-red-900/10 bg-white/20 hover:bg-white/40"
-                          }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <Building2 className="mt-0.5 h-4 w-4 text-red-900/50" />
-                          <div className="flex flex-wrap items-center justify-end gap-1">
-                            {fireCount > 0 ? (
-                              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-600 px-2 py-1 font-mono text-[9px] font-bold text-white">
-                                <Flame className="h-2.5 w-2.5" />
-                                화재 {fireCount}
-                              </span>
-                            ) : null}
-                            <span
-                              className={`rounded-full px-2 py-1 font-mono text-[9px] ${building.has_scene_graph
-                                  ? "bg-red-950 text-white"
-                                  : "bg-red-900/10 text-red-900/50"
-                                }`}
-                            >
-                              {building.has_scene_graph ? "GRAPH" : "EMPTY"}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="mt-3 text-sm font-bold text-zinc-900">{building.name}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
-                          {building.address ?? "주소 정보 없음"}
-                        </p>
-                      </button>
-                    );
-                  })
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <EmergencyFireNotifications
+                      pollBuildings={buildings}
+                      onSceneGraphPoll={handleSceneGraphPoll}
+                      onSelectBuilding={(buildingId) => void handleSelectBuilding(buildingId)}
+                      className="mb-6 shrink-0"
+                    />
+
+                    <h3 className="shrink-0 font-black text-xs uppercase italic tracking-[0.3em] text-zinc-400">
+                      관할 건물
+                    </h3>
+
+                    <div className="mt-6 shrink-0">
+                      <WorkspaceBuildingPicker
+                        buildings={sortedBuildings}
+                        selectedBuildingId={selectedBuildingId}
+                        onSelectBuilding={(buildingId) => void handleSelectBuilding(buildingId)}
+                      />
+                    </div>
+
+                    <div className="mt-8 shrink-0 space-y-5 border-t border-red-950/10 pt-6">
+                      <MetricRow icon={<Database size={16} />} label="Nodes" value={String(nodeCount)} />
+                      <MetricRow icon={<Activity size={16} />} label="Edges" value={String(edgeCount)} />
+                      <MetricRow icon={<Users size={16} />} label="Buildings" value={String(buildings.length)} />
+                      <MetricRow
+                        icon={<Thermometer size={16} />}
+                        label="Updated"
+                        value={selectedBuilding?.latest_graph_created_at ? "LIVE" : "N/A"}
+                      />
+                    </div>
+
+                    <div className="mt-8 shrink-0 border-t border-red-950/10 p-4">
+                      <p className="font-mono text-[9px] uppercase leading-relaxed text-zinc-400">
+                        {sceneGraph
+                          ? `LATEST GRAPH: ${formatViewerDateTime(sceneGraph.created_at)}`
+                          : "Scene graph가 있는 건물을 선택하면 3D 뷰어가 열립니다."}
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </div>
+              </SidebarPanelFlip>
+            </div>
 
-              <div className="mt-8 space-y-5 border-t border-red-950/10 pt-6">
-                <MetricRow icon={<Database size={16} />} label="Nodes" value={String(nodeCount)} />
-                <MetricRow icon={<Activity size={16} />} label="Edges" value={String(edgeCount)} />
-                <MetricRow icon={<Users size={16} />} label="Buildings" value={String(buildings.length)} />
-                <MetricRow
-                  icon={<Thermometer size={16} />}
-                  label="Updated"
-                  value={selectedBuilding?.latest_graph_created_at ? "LIVE" : "N/A"}
-                />
-              </div>
+            <div className="shrink-0 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleViewFireRiskResults}
+                disabled={!canViewFireRiskResults || fireRiskLoading}
+                className={`flex h-16 items-center justify-between rounded-[1.5rem] border px-8 transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
+                  fireRiskPanelOpen && !fireRiskLoading && canViewFireRiskResults
+                    ? "border-amber-500/50 bg-amber-100/80 text-amber-950 shadow-sm"
+                    : "border-amber-500/25 bg-amber-50/70 text-amber-950 hover:bg-amber-50 disabled:hover:bg-amber-50/70"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2.5 text-sm font-bold tracking-wide">
+                  <ClipboardList className="h-5 w-5" />
+                  결과 보기
+                </span>
+                <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-900">
+                  {canViewFireRiskResults
+                    ? `${fireRiskResult?.risk_count ?? fireRiskResult?.fire_risks.length ?? 0}건`
+                    : "—"}
+                </span>
+              </button>
 
-              <div className="mt-8 border-t border-red-950/10 p-4">
-                <p className="font-mono text-[9px] uppercase leading-relaxed text-zinc-400">
-                  {sceneGraph
-                    ? `LATEST GRAPH: ${formatViewerDateTime(sceneGraph.created_at)}`
-                    : "Scene graph가 있는 건물을 선택하면 3D 뷰어가 열립니다."}
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleFireRiskCheck()}
+                disabled={!selectedBuildingId || sceneGraphStatus !== "ready" || fireRiskLoading}
+                className={`flex h-[4.5rem] items-center justify-between rounded-[1.5rem] border px-8 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                  fireRiskPanelOpen
+                    ? "border-red-900/40 bg-white/80 text-red-950 shadow-sm"
+                    : "border-red-900/20 bg-white/50 text-red-950 hover:bg-white/80"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2.5 text-sm font-bold tracking-wide">
+                  {fireRiskLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ShieldAlert className="h-5 w-5" />
+                  )}
+                  점검
+                </span>
+                <span className="text-xs font-medium tracking-wide text-red-900/50">
+                  {fireRiskLoading ? "Analyzing" : "Fire Risk"}
+                </span>
+              </button>
             </div>
           </div>
         </div>

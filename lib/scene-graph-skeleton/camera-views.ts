@@ -88,15 +88,16 @@ export function focusTargetForAsset(asset: FacilityAssetRef): THREE.Vector3 {
   return new THREE.Vector3(x, y, z)
 }
 
-/** Orbit target만 살짝 옮길 때 — 줌인 없이 팬만 */
+/** Orbit target만 살짝 옮길 때 — 줌·회전 각 유지, 평행 이동만 */
 export function cameraPosePanTarget(
   target: THREE.Vector3,
   currentPosition: THREE.Vector3,
   currentTarget: THREE.Vector3,
 ): CameraPose {
+  const delta = target.clone().sub(currentTarget)
   return {
     target: target.clone(),
-    position: currentPosition.clone(),
+    position: currentPosition.clone().add(delta),
   }
 }
 

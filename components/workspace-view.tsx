@@ -8,12 +8,13 @@ import {
   ArrowRight,
   Activity,
   Building2,
+  ClipboardList,
   Compass,
   Database,
   Gem,
   Loader2,
   Maximize2,
-  Flame,
+  ShieldAlert,
   Thermometer,
   Users,
 } from "lucide-react";
@@ -24,10 +25,12 @@ import {
   type ViewerBuilding,
 } from "@/app/api/viewer";
 import { EmbeddedBuildingSceneViewer } from "@/components/facility-building-viewer/EmbeddedBuildingSceneViewer";
+import { ViewerFireRiskPanel } from "@/components/facility-building-viewer/ViewerFireRiskPanel";
+import { SidebarPanelFlip } from "@/components/facility/sidebar-panel-flip";
+import { WorkspaceBuildingPicker } from "@/components/facility/workspace-building-picker";
 import type { AuthUser, UserJob } from "@/app/api/auth";
 import { getStoredAuthUser } from "@/lib/auth/storage";
 import {
-  getBuildingActiveFireCount,
   sortBuildingsByFirePriority,
 } from "@/lib/fire-incidents/building-list";
 import { FIRE_INCIDENTS_CHANGED_EVENT } from "@/lib/fire-incidents/storage";
@@ -39,6 +42,7 @@ import {
 import { formatViewerDateTime } from "@/lib/format/datetime";
 import { getAxiosErrorStatus, handleUnauthorized } from "@/lib/http/errors";
 import { parseFireIncidentsFromSceneGraph } from "@/lib/fire-incidents/storage";
+import { useFireRiskAssessment } from "@/lib/fire-risk-assessments/use-fire-risk-assessment";
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
 
 const formatCoordinate = (value: number | null | undefined, suffix: "N" | "E") => {
@@ -91,6 +95,43 @@ export default function WorkspaceView() {
     () => buildings.find((building) => building.id === selectedBuildingId) ?? null,
     [buildings, selectedBuildingId]
   );
+
+  const applySceneGraphUpdate = useCallback((next: SceneGraph) => {
+    setSceneGraph(next);
+    setBuildings((current) =>
+      current.map((building) =>
+        building.id === next.building_id
+          ? {
+              ...building,
+              has_scene_graph: true,
+              latest_graph_created_at: next.created_at,
+              active_fire_count: parseFireIncidentsFromSceneGraph(next.scene_graph).length,
+            }
+          : building,
+      ),
+    );
+  }, []);
+
+  const {
+    fireRiskPanelOpen,
+    setFireRiskPanelOpen,
+    fireRiskLoading,
+    fireRiskError,
+    fireRiskResult,
+    selectedFireRiskId,
+    selectedFireRisk,
+    fireRiskFocusSeq,
+    canViewFireRiskResults,
+    handleFireRiskCheck,
+    handleSelectFireRisk,
+    handleViewFireRiskResults,
+    resetForBuildingChange,
+  } = useFireRiskAssessment({
+    selectedBuildingId,
+    sceneGraph,
+    sceneGraphStatus,
+    onSceneGraphUpdate: applySceneGraphUpdate,
+  });
 
   const nodeCount = sceneGraph?.scene_graph.nodes?.length ?? 0;
   const edgeCount = sceneGraph?.scene_graph.edges?.length ?? 0;
@@ -165,6 +206,7 @@ export default function WorkspaceView() {
     setSelectedBuildingId(buildingId);
     setSceneGraph(null);
     setSceneGraphStatus("loading");
+    resetForBuildingChange();
 
     if (isDemoBuildingId(buildingId)) {
       const graph = getDemoSceneGraph(buildingId);
@@ -296,7 +338,7 @@ export default function WorkspaceView() {
           </button>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[70vh]">
+        <div className="grid min-h-[70vh] grid-cols-1 items-stretch gap-6 lg:grid-cols-12 lg:h-[70vh] lg:min-h-0">
           <div
             className="lg:col-span-8 relative rounded-[2rem] border border-white/60 bg-white/30 overflow-hidden shadow-2xl min-h-[520px]"
             style={{
@@ -312,128 +354,145 @@ export default function WorkspaceView() {
               districtName={selectedBuilding?.district_name}
               enableFacilityTools
               isEmergency={isEmergency}
+              selectedFireRisk={selectedFireRisk}
+              fireRiskFocusSeq={fireRiskFocusSeq}
               onSceneGraphChange={(next) => {
-                setSceneGraph(next);
-                setBuildings((current) =>
-                  current.map((building) =>
-                    building.id === next.building_id
-                      ? {
-                          ...building,
-                          has_scene_graph: true,
-                          latest_graph_created_at: next.created_at,
-                          active_fire_count: parseFireIncidentsFromSceneGraph(next.scene_graph).length,
-                        }
-                      : building,
-                  ),
-                );
+                applySceneGraphUpdate(next);
               }}
               onFireIncidentsChange={bumpFireListRevision}
             />
           </div>
 
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="flex min-h-0 flex-col gap-6 lg:col-span-4 lg:h-full">
             <div
-              className="flex-1 rounded-[2rem] border border-white/60 bg-white/20 p-8 flex flex-col"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-white/20 p-8"
               style={{ backdropFilter: "blur(20px)" }}
             >
-              <h3 className="mb-6 font-black text-xs tracking-[0.3em] uppercase text-zinc-400 italic">
-                Building Access
-              </h3>
-
-              <div className="space-y-3 overflow-y-auto pr-1">
-                {buildings.length === 0 ? (
-                  <div className="rounded-xl border border-red-900/10 bg-white/30 p-5 text-sm text-zinc-500">
-                    접근 가능한 건물이 없습니다.
-                  </div>
+              <SidebarPanelFlip panelKey={fireRiskPanelOpen ? "fire-risk" : "building-access"}>
+                {fireRiskPanelOpen ? (
+                  <ViewerFireRiskPanel
+                    variant="embedded"
+                    open={fireRiskPanelOpen}
+                    loading={fireRiskLoading}
+                    error={fireRiskError}
+                    result={fireRiskResult}
+                    selectedRiskId={selectedFireRiskId}
+                    onClose={() => setFireRiskPanelOpen(false)}
+                    onSelectRisk={handleSelectFireRisk}
+                  />
                 ) : (
-                  sortedBuildings.map((building) => {
-                    const fireCount = getBuildingActiveFireCount(building);
-                    return (
-                    <button
-                      key={building.id}
-                      type="button"
-                      onClick={() => handleSelectBuilding(building.id)}
-                      className={`w-full rounded-xl border p-4 text-left transition-all ${
-                        selectedBuildingId === building.id
-                          ? "border-red-900/40 bg-white/60 shadow-sm"
-                          : fireCount > 0
-                            ? "border-red-500/35 bg-red-50/40 hover:bg-red-50/60"
-                            : "border-red-900/10 bg-white/20 hover:bg-white/40"
-                      }`}
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <h3 className="mb-6 shrink-0 font-black text-xs tracking-[0.3em] uppercase text-zinc-400 italic">
+                      Building Access
+                    </h3>
+
+                    <div className="shrink-0">
+                      <WorkspaceBuildingPicker
+                        buildings={sortedBuildings}
+                        selectedBuildingId={selectedBuildingId}
+                        onSelectBuilding={(buildingId) => void handleSelectBuilding(buildingId)}
+                        placeholder="Select a building"
+                        searchPlaceholder="Search buildings"
+                        emptyLabel="접근 가능한 건물이 없습니다."
+                      />
+                    </div>
+
+                    <div className="mt-8 shrink-0 space-y-5 border-t border-red-950/10 pt-6">
+                      <MetricRow
+                        icon={<Database size={16} />}
+                        label="Nodes"
+                        value={String(nodeCount)}
+                        color={isEmergency ? "text-red-600" : "text-zinc-900"}
+                      />
+                      <MetricRow
+                        icon={<Activity size={16} />}
+                        label="Edges"
+                        value={String(edgeCount)}
+                        color={isEmergency ? "text-red-600" : "text-zinc-900"}
+                      />
+                      <MetricRow
+                        icon={<Users size={16} />}
+                        label="Buildings"
+                        value={String(buildings.length)}
+                        color={isEmergency ? "text-red-600" : "text-zinc-900"}
+                      />
+                      <MetricRow
+                        icon={<Thermometer size={16} />}
+                        label="Updated"
+                        value={selectedBuilding?.latest_graph_created_at ? "LIVE" : "N/A"}
+                        color={isEmergency ? "text-red-600" : "text-zinc-900"}
+                      />
+                    </div>
+
+                    <div
+                      className={`mt-8 shrink-0 border-t p-4 transition-colors ${isEmergency ? "border-red-500/30" : "border-red-950/10"}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <Building2 className="mt-0.5 h-4 w-4 text-red-900/50" />
-                        <div className="flex flex-wrap items-center justify-end gap-1">
-                          {fireCount > 0 ? (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-red-600 px-2 py-1 font-mono text-[9px] font-bold text-white">
-                              <Flame className="h-2.5 w-2.5" />
-                              화재 {fireCount}
-                            </span>
-                          ) : null}
-                          <span
-                            className={`rounded-full px-2 py-1 font-mono text-[9px] ${
-                              building.has_scene_graph
-                                ? "bg-red-950 text-white"
-                                : "bg-red-900/10 text-red-900/50"
-                            }`}
-                          >
-                            {building.has_scene_graph ? "GRAPH" : "EMPTY"}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm font-bold text-zinc-900">{building.name}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{building.address ?? "주소 정보 없음"}</p>
-                    </button>
-                    );
-                  })
+                      <p className="text-[9px] font-mono leading-relaxed text-zinc-400 uppercase">
+                        {sceneGraph
+                          ? `LATEST GRAPH: ${formatViewerDateTime(sceneGraph.created_at)}`
+                          : "Select a building with scene graph data to initialize the viewer."}
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </div>
-
-              <div className="mt-8 space-y-5 border-t border-red-950/10 pt-6">
-                <MetricRow
-                  icon={<Database size={16} />}
-                  label="Nodes"
-                  value={String(nodeCount)}
-                  color={isEmergency ? "text-red-600" : "text-zinc-900"}
-                />
-                <MetricRow
-                  icon={<Activity size={16} />}
-                  label="Edges"
-                  value={String(edgeCount)}
-                  color={isEmergency ? "text-red-600" : "text-zinc-900"}
-                />
-                <MetricRow
-                  icon={<Users size={16} />}
-                  label="Buildings"
-                  value={String(buildings.length)}
-                  color={isEmergency ? "text-red-600" : "text-zinc-900"}
-                />
-                <MetricRow
-                  icon={<Thermometer size={16} />}
-                  label="Updated"
-                  value={selectedBuilding?.latest_graph_created_at ? "LIVE" : "N/A"}
-                  color={isEmergency ? "text-red-600" : "text-zinc-900"}
-                />
-              </div>
-
-              <div className={`mt-8 p-4 border-t transition-colors ${isEmergency ? "border-red-500/30" : "border-red-950/10"}`}>
-                <p className="text-[9px] font-mono text-zinc-400 leading-relaxed uppercase">
-                  {sceneGraph
-                    ? `LATEST GRAPH: ${formatViewerDateTime(sceneGraph.created_at)}`
-                    : "Select a building with scene graph data to initialize the viewer."}
-                </p>
-              </div>
+              </SidebarPanelFlip>
             </div>
 
-            <button
-              type="button"
-              onClick={handleUploadClick}
-                disabled={!selectedBuildingId}
-                className="h-20 bg-red-950 text-white flex items-center justify-between px-8 rounded-[1.5rem] hover:bg-black transition-all group disabled:cursor-not-allowed disabled:bg-zinc-300"
+            <div className="shrink-0 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleViewFireRiskResults}
+                disabled={!canViewFireRiskResults || fireRiskLoading}
+                className={`flex h-16 items-center justify-between rounded-[1.5rem] border px-8 transition-all disabled:cursor-not-allowed disabled:opacity-45 ${
+                  fireRiskPanelOpen && !fireRiskLoading && canViewFireRiskResults
+                    ? "border-amber-500/50 bg-amber-100/80 text-amber-950 shadow-sm"
+                    : "border-amber-500/25 bg-amber-50/70 text-amber-950 hover:bg-amber-50 disabled:hover:bg-amber-50/70"
+                }`}
               >
-                <span className="font-mono text-[10px] tracking-[0.5em] uppercase font-bold">Upload Scan</span>
-                <ArrowRight size={18} className="group-hover:translate-x-2 transition-transform" />
-            </button>
+                <span className="inline-flex items-center gap-2.5 text-sm font-bold tracking-wide">
+                  <ClipboardList className="h-5 w-5" />
+                  결과 보기
+                </span>
+                <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-900">
+                  {canViewFireRiskResults
+                    ? `${fireRiskResult?.risk_count ?? fireRiskResult?.fire_risks.length ?? 0}건`
+                    : "—"}
+                </span>
+              </button>
+
+              <button
+                  type="button"
+                  onClick={handleFireRiskCheck}
+                  disabled={!selectedBuildingId || sceneGraphStatus !== "ready" || fireRiskLoading}
+                  className={`flex h-[4.5rem] items-center justify-between rounded-[1.5rem] border px-8 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                    fireRiskPanelOpen
+                      ? "border-red-900/40 bg-white/80 text-red-950 shadow-sm"
+                      : "border-red-900/20 bg-white/50 text-red-950 hover:bg-white/80"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2.5 text-sm font-bold tracking-wide">
+                    {fireRiskLoading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ShieldAlert className="h-5 w-5" />
+                    )}
+                    점검
+                  </span>
+                  <span className="text-xs font-medium tracking-wide text-red-900/50">
+                    {fireRiskLoading ? "Analyzing" : "Fire Risk"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleUploadClick}
+                  disabled={!selectedBuildingId}
+                  className="group flex h-[5rem] items-center justify-between rounded-[1.5rem] bg-red-950 px-8 text-white transition-all hover:bg-black disabled:cursor-not-allowed disabled:bg-zinc-300"
+                >
+                  <span className="text-sm font-bold tracking-wide">Upload Scan</span>
+                  <ArrowRight size={20} className="transition-transform group-hover:translate-x-2" />
+                </button>
+            </div>
           </div>
         </div>
       </div>

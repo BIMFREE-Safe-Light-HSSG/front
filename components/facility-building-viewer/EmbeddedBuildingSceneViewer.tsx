@@ -116,6 +116,12 @@ import type {
 } from "@/lib/scene-graph-skeleton/types";
 import { getAxiosErrorStatus } from "@/lib/http/errors";
 import { cn } from "@/lib/utils";
+import type { FireRiskOverlay } from "@/lib/fire-risk-assessments/types";
+import {
+  fireRiskHighlightAssetId,
+  fireRiskHighlightZoneId,
+  resolveFireRiskTargetNodeId,
+} from "@/lib/fire-risk-assessments/resolve-target";
 
 type SceneGraphStatus = "idle" | "loading" | "ready" | "empty" | "forbidden" | "error";
 
@@ -131,6 +137,10 @@ type EmbeddedBuildingSceneViewerProps = {
   onSceneGraphChange?: (sceneGraph: SceneGraph) => void;
   /** 화재 등록·삭제 시 건물 목록 재정렬용 */
   onFireIncidentsChange?: () => void;
+  /** 취약점검 패널에서 선택한 overlay — 뷰어 하이라이트·카메라 이동 */
+  selectedFireRisk?: FireRiskOverlay | null;
+  /** 카드 재클릭 시 카메라 재포커스 */
+  fireRiskFocusSeq?: number;
 };
 
 const assetStatuses: AssetStatus[] = ["normal", "inspection_due", "fault", "offline"];
@@ -418,6 +428,8 @@ export function EmbeddedBuildingSceneViewer({
   isEmergency = false,
   onSceneGraphChange,
   onFireIncidentsChange,
+  selectedFireRisk = null,
+  fireRiskFocusSeq = 0,
 }: EmbeddedBuildingSceneViewerProps) {
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -876,6 +888,48 @@ export function EmbeddedBuildingSceneViewer({
     cameraSeqRef.current += 1;
     setCameraCommand({ seq: cameraSeqRef.current, action });
   }, []);
+
+  const fireRiskTarget = useMemo(() => {
+    if (!selectedFireRisk) return null;
+    return resolveFireRiskTargetNodeId(zones, assets, selectedFireRisk.target_node_id);
+  }, [selectedFireRisk, zones, assets]);
+
+  const fireRiskZoneId = useMemo(
+    () => fireRiskHighlightZoneId(fireRiskTarget),
+    [fireRiskTarget],
+  );
+
+  const fireRiskAssetId = useMemo(
+    () => fireRiskHighlightAssetId(fireRiskTarget),
+    [fireRiskTarget],
+  );
+
+  useEffect(() => {
+    if (!selectedFireRisk || !fireRiskTarget) return;
+
+    if (fireRiskTarget.kind === "zone") {
+      setSelectedZoneId(fireRiskTarget.zoneId);
+      setSelectedAssetId(null);
+      setSelectedFireId(null);
+      pushCamera({
+        type: "focus-zone",
+        zoneId: fireRiskTarget.zoneId,
+        intensity: "pan",
+      });
+      return;
+    }
+
+    setSelectedAssetId(fireRiskTarget.assetId);
+    if (fireRiskTarget.zoneId) {
+      setSelectedZoneId(fireRiskTarget.zoneId);
+    }
+    setSelectedFireId(null);
+    pushCamera({
+      type: "focus-asset",
+      assetId: fireRiskTarget.assetId,
+      intensity: "pan",
+    });
+  }, [selectedFireRisk?.id, fireRiskFocusSeq, fireRiskTarget, pushCamera]);
 
   useEffect(() => {
     if (!searchFocusKey || !searchFocusBounds) return;
@@ -1637,6 +1691,8 @@ export function EmbeddedBuildingSceneViewer({
         zoneSearchHighlightActive={zoneSearchHighlightActive}
         highlightZoneIds={highlightZoneIds}
         highlightAssetIds={highlightAssetIds}
+        fireRiskZoneId={fireRiskZoneId}
+        fireRiskAssetId={fireRiskAssetId}
         firefighterZoneView={firefighterZoneView}
         fireZoneIds={fireZoneIds}
         sceneTheme={isEmergency ? "emergency" : "day"}

@@ -83,6 +83,9 @@ export type BuildingSceneCanvasProps = {
   fireIncidents?: FireIncident[];
   selectedFireId?: string | null;
   onSelectFire?: (id: string) => void;
+  /** 취약점검 카드 선택 시 하이라이트·dim */
+  fireRiskZoneId?: string | null;
+  fireRiskAssetId?: string | null;
   placementVariant?: "default" | "fire";
   /** 소방 뷰: 구역 단일색 + 화재 구역만 붉게 */
   firefighterZoneView?: boolean;
@@ -122,6 +125,7 @@ function ZonePanel({
   shellDisplay,
   firefighterZoneView,
   isFireZone,
+  fireRiskSelected = false,
   onSelect,
   onPlacementPick,
   onContextPick,
@@ -140,6 +144,7 @@ function ZonePanel({
   shellDisplay: ViewerShellDisplay;
   firefighterZoneView: boolean;
   isFireZone: boolean;
+  fireRiskSelected?: boolean;
   onSelect: (id: string) => void;
   onPlacementPick: (position: Vec3) => void;
   onContextPick?: (target: SceneContextTarget) => void;
@@ -201,6 +206,14 @@ function ZonePanel({
         emissiveIntensity: 0.35,
       });
     }
+    if (fireRiskSelected) {
+      return createGlassZoneMaterial(color, {
+        opacity: shellGlassOpacity(0.64, shellXray),
+        color: 0xfbbf24,
+        emissive: 0xef4444,
+        emissiveIntensity: 0.48,
+      });
+    }
     if (dimmed) {
       return createGlassZoneMaterial(color, {
         opacity: shellGlassOpacity(0.07, shellXray),
@@ -209,7 +222,7 @@ function ZonePanel({
     return createGlassZoneMaterial(selected ? 0xffffff : color, {
       opacity: shellGlassOpacity(selected ? 0.42 : 0.3, shellXray),
     });
-  }, [color, selected, highlighted, dimmed, firefighterZoneView, isFireZone, shellXray]);
+  }, [color, selected, highlighted, fireRiskSelected, dimmed, firefighterZoneView, isFireZone, shellXray]);
 
   const outlineMaterial = useMemo(
     () =>
@@ -415,6 +428,8 @@ function SceneContent({
   placementVariant = "default",
   firefighterZoneView = false,
   fireZoneIds,
+  fireRiskZoneId = null,
+  fireRiskAssetId = null,
   sceneTheme = "day",
 }: BuildingSceneCanvasProps) {
   const bounds = useMemo(() => boundsFromZones(zones, assets), [zones, assets]);
@@ -463,17 +478,21 @@ function SceneContent({
 
   const useMergedZoneShell = showZoneMeshes && !firefighterZoneView;
 
+  const fireRiskFocusActive = Boolean(fireRiskZoneId || fireRiskAssetId);
+
   const zoneShellStates = useMemo(
     () =>
       zones.map((zone, index) => {
         const zHighlighted =
           zoneSearchHighlightActive && highlightZoneIds.has(zone.id);
         const isFireZone = fireZoneIds?.has(zone.id) ?? false;
+        const fireRiskSelected = fireRiskZoneId === zone.id;
         const zDimmed =
-          zoneSearchHighlightActive &&
-          searchHighlightActive &&
-          !zHighlighted &&
-          !(firefighterZoneView && isFireZone);
+          (zoneSearchHighlightActive &&
+            searchHighlightActive &&
+            !zHighlighted &&
+            !(firefighterZoneView && isFireZone)) ||
+          (fireRiskFocusActive && !fireRiskSelected && fireRiskZoneId !== zone.id);
         return {
           zoneId: zone.id,
           index,
@@ -482,6 +501,7 @@ function SceneContent({
           dimmed: zDimmed,
           firefighterZoneView,
           isFireZone,
+          fireRiskSelected,
         };
       }),
     [
@@ -492,6 +512,8 @@ function SceneContent({
       searchHighlightActive,
       firefighterZoneView,
       fireZoneIds,
+      fireRiskZoneId,
+      fireRiskFocusActive,
     ],
   );
 
@@ -571,6 +593,7 @@ function SceneContent({
                 shellDisplay={shellDisplay}
                 firefighterZoneView={firefighterZoneView}
                 isFireZone={state.isFireZone}
+                fireRiskSelected={state.fireRiskSelected}
                 onSelect={(id) => onSelectZone(id)}
                 onPlacementPick={onPlacementPick}
                 onContextPick={onContextPick}
@@ -598,8 +621,10 @@ function SceneContent({
             />
           ) : null}
           {animatedAssets.map((asset) => {
-            const aHighlighted = highlightAssetIds.has(asset.id);
-            const aDimmed = searchHighlightActive && !aHighlighted;
+            const aHighlighted = highlightAssetIds.has(asset.id) || asset.id === fireRiskAssetId;
+            const aDimmed =
+              (searchHighlightActive && !highlightAssetIds.has(asset.id) && asset.id !== fireRiskAssetId) ||
+              (fireRiskFocusActive && asset.id !== fireRiskAssetId && asset.zoneId !== fireRiskZoneId);
             return (
               <AssetSpot
                 key={asset.id}
@@ -625,8 +650,10 @@ function SceneContent({
       {showStructure ? (
         <group>
           {structuralAssets.map((asset) => {
-            const aHighlighted = highlightAssetIds.has(asset.id);
-            const aDimmed = searchHighlightActive && !aHighlighted;
+            const aHighlighted = highlightAssetIds.has(asset.id) || asset.id === fireRiskAssetId;
+            const aDimmed =
+              (searchHighlightActive && !highlightAssetIds.has(asset.id) && asset.id !== fireRiskAssetId) ||
+              (fireRiskFocusActive && asset.id !== fireRiskAssetId && asset.zoneId !== fireRiskZoneId);
             return (
               <AssetSpot
                 key={asset.id}

@@ -25,6 +25,7 @@ import type { FacilityAssetRef, ZoneNode } from "@/lib/scene-graph-skeleton/type
 
 const FLY_DURATION: Record<CameraFocusIntensity, number> = {
   subtle: 0.42,
+  pan: 0.5,
   medium: 0.55,
   full: 0.72,
 }
@@ -32,8 +33,13 @@ const FLY_DURATION: Record<CameraFocusIntensity, number> = {
 /** 현재 시선에서 목표까지 보간 비율 (작을수록 덜 움직임) */
 const BLEND: Record<CameraFocusIntensity, number> = {
   subtle: 0.22,
+  pan: 1,
   medium: 0.38,
   full: 1,
+}
+
+function usesPanOnly(intensity: CameraFocusIntensity): boolean {
+  return intensity === "subtle" || intensity === "pan"
 }
 
 function easeInOutQuad(t: number): number {
@@ -125,7 +131,7 @@ export function SceneCameraController({
         if (!zone) return null
         const target = focusTargetForZone(zone)
         const desired =
-          intensity === "subtle"
+          usesPanOnly(intensity)
             ? cameraPosePanTarget(target, camera.position, controls.target)
             : cameraPoseFocusOnZone(zone, bounds)
         return {
@@ -143,7 +149,7 @@ export function SceneCameraController({
         if (!asset) return null
         const target = focusTargetForAsset(asset)
         const desired =
-          intensity === "subtle"
+          usesPanOnly(intensity)
             ? cameraPosePanTarget(target, camera.position, controls.target)
             : cameraPoseFocusOnAsset(asset, bounds)
         return {

@@ -36,8 +36,8 @@ export const FIREFIGHTER_LAYER_VISIBILITY: ViewerLayerVisibility = {
   fires: true,
 }
 
-/** subtle: 선택 시 타깃만 살짝 팬 · medium: 포커스 버튼 · full: 프리셋 */
-export type CameraFocusIntensity = "subtle" | "medium" | "full"
+/** subtle: 선택 시 타깃만 살짝 팬 · pan: 줌 없이 전체 팬 · medium: 포커스 · full: 프리셋 */
+export type CameraFocusIntensity = "subtle" | "pan" | "medium" | "full"
 
 export type CameraCommandAction =
   | { type: "preset"; preset: CameraViewPreset }
