@@ -102,7 +102,7 @@ export function ViewerRescueNavControls({
           <p className="text-[11px] font-medium text-zinc-700">피해자: {victimLabel}</p>
         ) : null}
 
-        {statusMessage ? (
+        {rescuerLabel ? (
           <p className="text-[11px] leading-relaxed text-emerald-800">{statusMessage}</p>
         ) : null}
 

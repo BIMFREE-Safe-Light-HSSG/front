@@ -20,9 +20,12 @@ yarn-error.log*
 # env files
 .env*
 
-# RunPod realtime-nav API (deployed via Docker)
+# RunPod realtime-nav API — 로컬 Docker 배포용 (GitHub 미동기화)
+services/realtime-nav-api/Dockerfile
 services/realtime-nav-api/requirements.txt
 services/realtime-nav-api/README.md
+services/realtime-nav-api/app/
+services/realtime-nav-api/data/
 
 # vercel
 .vercel

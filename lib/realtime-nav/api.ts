@@ -44,6 +44,20 @@ export function isRealtimeNavConfigured(): boolean {
   return Boolean(getRealtimeNavUrl());
 }
 
+export class RealtimeNavError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "RealtimeNavError";
+    this.status = status;
+  }
+}
+
+export function isRealtimeNavSessionNotStarted(error: unknown): boolean {
+  return error instanceof RealtimeNavError && error.status === 409;
+}
+
 function navHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -71,7 +85,7 @@ async function navFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`realtime-nav ${response.status}: ${detail || response.statusText}`);
+    throw new RealtimeNavError(response.status, detail || response.statusText);
   }
 
   return response.json() as Promise<T>;
@@ -101,6 +115,7 @@ export async function startRealtimeNavSession(input?: {
   rescuer_node?: string;
   victim_node?: string;
   reset_clock?: boolean;
+  simulate_elapsed_sec?: number;
 }): Promise<RealtimeNavState> {
   return navFetch<RealtimeNavState>("/session", {
     method: "POST",
@@ -108,8 +123,14 @@ export async function startRealtimeNavSession(input?: {
   });
 }
 
-export async function fetchRealtimeNavState(): Promise<RealtimeNavState> {
-  return navFetch<RealtimeNavState>("/state");
+export async function fetchRealtimeNavState(options?: {
+  elapsedSec?: number;
+}): Promise<RealtimeNavState> {
+  const query =
+    options?.elapsedSec != null
+      ? `?elapsed_sec=${encodeURIComponent(String(options.elapsedSec))}`
+      : "";
+  return navFetch<RealtimeNavState>(`/state${query}`);
 }
 
 export async function updateRealtimeNavRescuer(nodeId: string): Promise<RealtimeNavState> {

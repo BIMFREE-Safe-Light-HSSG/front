@@ -84,14 +84,20 @@ import {
 } from "@/lib/scene-graph-skeleton/route-assets";
 import {
   isRealtimeNavConfigured,
-  realtimeNavPathToRoutePath,
+  isRealtimeNavSessionNotStarted,
   startRealtimeNavSession,
   updateRealtimeNavRescuer,
   updateRealtimeNavVictim,
   fetchRealtimeNavState,
 } from "@/lib/realtime-nav/api";
 import { fetchNavRoomNodes, nearestNavNodeToZone } from "@/lib/realtime-nav/nav-nodes";
+import {
+  applyRescueNavState,
+  rescueNavPollIntervalMs,
+  rescueNavSimStepSec,
+} from "@/lib/realtime-nav/rescue-nav-state";
 import { buildNavSessionFromScene, resolveOccupantRole } from "@/lib/realtime-nav/scene-mapping";
+import type { RealtimeNavState } from "@/lib/realtime-nav/api";
 import {
   filterAssetsForViewerMode,
   isStructuralAssetClass,
@@ -465,6 +471,7 @@ export function EmbeddedBuildingSceneViewer({
   const [rescueNavLoading, setRescueNavLoading] = useState(false);
   const [rescueNavStatus, setRescueNavStatus] = useState<string | null>(null);
   const [rescueNavError, setRescueNavError] = useState<string | null>(null);
+  const [rescueNavPolling, setRescueNavPolling] = useState(false);
 
   const canManageFires = enableFacilityTools && Boolean(buildingId);
   const firefighterNavTools = !enableFacilityTools && isRealtimeNavConfigured();
@@ -485,6 +492,7 @@ export function EmbeddedBuildingSceneViewer({
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const cameraSeqRef = useRef(0);
+  const rescueNavSimElapsedRef = useRef(0);
 
   const doc = useMemo(() => (sceneGraph ? toSkeletonDocument(sceneGraph) : null), [sceneGraph]);
   const zones = doc?.scene_graph.nodes ?? [];
@@ -585,7 +593,62 @@ export function EmbeddedBuildingSceneViewer({
     setRescueNavRoute(null);
     setRescueNavStatus(null);
     setRescueNavError(null);
+    setRescueNavPolling(false);
+    rescueNavSimElapsedRef.current = 0;
   }, [buildingId]);
+
+  const syncRescueNavState = useCallback((state: RealtimeNavState) => {
+    rescueNavSimElapsedRef.current = state.fire.elapsed_sec;
+    const applied = applyRescueNavState(state);
+
+    if (applied.route) {
+      setRescueNavRoute(applied.route);
+      setRescueNavStatus(applied.statusMessage);
+      setRescueNavError(null);
+      setLayerVisibility((value) => ({ ...value, structure: true }));
+      return;
+    }
+
+    setRescueNavRoute(null);
+    setRescueNavStatus(applied.statusMessage);
+    setRescueNavError(applied.errorMessage);
+  }, []);
+
+  const refreshRescueNavFromServer = useCallback(
+    async (elapsedSec?: number) => {
+      const state = await fetchRealtimeNavState(
+        elapsedSec != null ? { elapsedSec } : undefined,
+      );
+      syncRescueNavState(state);
+      return state;
+    },
+    [syncRescueNavState],
+  );
+
+  useEffect(() => {
+    if (!firefighterNavTools || !rescueNavPolling) return;
+
+    const intervalMs = rescueNavPollIntervalMs();
+    const simStep = rescueNavSimStepSec();
+
+    const tick = async () => {
+      try {
+        const nextElapsed =
+          simStep > 0 ? rescueNavSimElapsedRef.current + simStep : undefined;
+        await refreshRescueNavFromServer(nextElapsed);
+      } catch (error) {
+        if (isRealtimeNavSessionNotStarted(error)) {
+          setRescueNavPolling(false);
+        }
+      }
+    };
+
+    const id = window.setInterval(() => {
+      void tick();
+    }, intervalMs);
+
+    return () => window.clearInterval(id);
+  }, [firefighterNavTools, rescueNavPolling, refreshRescueNavFromServer]);
 
   const applyNavZonePlacement = useCallback(
     async (
@@ -643,6 +706,10 @@ export function EmbeddedBuildingSceneViewer({
           }
         }
 
+        if (rescueNavPolling) {
+          await refreshRescueNavFromServer();
+        }
+
         if (role === "rescuer") {
           setRescueNavStatus(`소방대원 시작 위치: ${zone.name} (${navNode.id})`);
         } else {
@@ -664,6 +731,8 @@ export function EmbeddedBuildingSceneViewer({
       occupants,
       rescuerNavNodeId,
       victimNavNodeId,
+      rescueNavPolling,
+      refreshRescueNavFromServer,
     ],
   );
 
@@ -767,23 +836,11 @@ export function EmbeddedBuildingSceneViewer({
       }
 
       const state = await startRealtimeNavSession({ ...sessionNodes, reset_clock: true });
-      const route = realtimeNavPathToRoutePath(state);
-
-      if (!route) {
-        setRescueNavError(state.path.replan_reason || "안전한 구조 경로를 찾지 못했습니다.");
-        setRescueNavRoute(null);
-        return;
-      }
-
-      setRescueNavRoute(route);
-      setLayerVisibility((value) => ({ ...value, structure: true }));
-      setRescueNavStatus(
-        state.path.is_safe
-          ? `구조 경로 ${state.path.path.length}구간 · 안전 경로`
-          : `구조 경로 ${state.path.path.length}구간 · ${state.path.warning ?? "주의 경로"}`,
-      );
+      syncRescueNavState(state);
+      setRescueNavPolling(true);
     } catch (error) {
       setRescueNavRoute(null);
+      setRescueNavPolling(false);
       setRescueNavError(
         error instanceof Error ? error.message : "구조 경로 탐색에 실패했습니다.",
       );
@@ -797,6 +854,7 @@ export function EmbeddedBuildingSceneViewer({
     fireIncidents,
     occupants,
     zones,
+    syncRescueNavState,
   ]);
 
   const canvasOccupants = useMemo(() => {
