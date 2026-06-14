@@ -29,8 +29,8 @@ export function boundsFromZones(zones: ZoneNode[], assets: FacilityAssetRef[] = 
 
   for (const zone of zones) {
     const { center, height, coordinates } = zone.geometry
-    const baseY = skeletonCenterToThreeBase(center, height)  // = center[2] (floor Z)
-    const topY = center[2] + height
+    const baseY = skeletonCenterToThreeBase(center, height)
+    const topY = center[2] + height / 2
     growBounds(bounds, center[0], baseY, center[1])
     growBounds(bounds, center[0], topY, center[1])
     for (const [x, planY] of coordinates) {

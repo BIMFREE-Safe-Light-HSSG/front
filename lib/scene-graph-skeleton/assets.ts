@@ -94,7 +94,7 @@ function normalizeAsset(raw: SkeletonAsset): SkeletonAsset | null {
   };
 }
 
-/** skeleton Z-up: center[2] = floor Z, ceiling = center[2] + height */
+/** skeleton Z-up: center[2] ± height/2 */
 const ZONE_Z_MATCH_EPSILON = 0.02;
 
 function pointInPolygon(x: number, y: number, polygon: [number, number][]): boolean {
@@ -114,8 +114,9 @@ function pointInPolygon(x: number, y: number, polygon: [number, number][]): bool
 }
 
 function zoneVerticalBounds(zone: ZoneNode): { minZ: number; maxZ: number } {
-  const floorZ = zone.geometry.center[2];
-  return { minZ: floorZ, maxZ: floorZ + zone.geometry.height };
+  const half = zone.geometry.height / 2;
+  const centerZ = zone.geometry.center[2];
+  return { minZ: centerZ - half, maxZ: centerZ + half };
 }
 
 function isPositionInsideZoneVertical(z: number, zone: ZoneNode): boolean {
