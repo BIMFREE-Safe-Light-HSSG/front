@@ -90,7 +90,8 @@ import {
   updateRealtimeNavVictim,
   fetchRealtimeNavState,
 } from "@/lib/realtime-nav/api";
-import { fetchNavRoomNodes, nearestNavNodeToZone } from "@/lib/realtime-nav/nav-nodes";
+import { fireSpreadToZoneIds } from "@/lib/realtime-nav/fire-spread-zones";
+import { fetchAllNavNodes, fetchNavRoomNodes, nearestNavNodeToZone } from "@/lib/realtime-nav/nav-nodes";
 import {
   applyRescueNavState,
   rescueNavPollIntervalMs,
@@ -472,6 +473,7 @@ export function EmbeddedBuildingSceneViewer({
   const [rescueNavStatus, setRescueNavStatus] = useState<string | null>(null);
   const [rescueNavError, setRescueNavError] = useState<string | null>(null);
   const [rescueNavPolling, setRescueNavPolling] = useState(false);
+  const [fireSpreadZoneIds, setFireSpreadZoneIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const canManageFires = enableFacilityTools && Boolean(buildingId);
   const firefighterNavTools = !enableFacilityTools && isRealtimeNavConfigured();
@@ -530,10 +532,15 @@ export function EmbeddedBuildingSceneViewer({
     [enableFacilityTools, layerVisibility],
   );
 
-  const fireZoneIds = useMemo(
-    () => (firefighterZoneView ? zoneIdsContainingFireIncidents(zones, fireIncidents) : undefined),
-    [firefighterZoneView, zones, fireIncidents],
-  );
+  const fireZoneIds = useMemo(() => {
+    if (!firefighterZoneView) return undefined;
+
+    const ids = zoneIdsContainingFireIncidents(zones, fireIncidents);
+    for (const zoneId of fireSpreadZoneIds) {
+      ids.add(zoneId);
+    }
+    return ids;
+  }, [firefighterZoneView, zones, fireIncidents, fireSpreadZoneIds]);
 
   const reloadFireIncidents = useCallback(async () => {
     if (!showFireLayer || !buildingId || !doc) {
@@ -594,32 +601,44 @@ export function EmbeddedBuildingSceneViewer({
     setRescueNavStatus(null);
     setRescueNavError(null);
     setRescueNavPolling(false);
+    setFireSpreadZoneIds(new Set());
     rescueNavSimElapsedRef.current = 0;
   }, [buildingId]);
 
-  const syncRescueNavState = useCallback((state: RealtimeNavState) => {
-    rescueNavSimElapsedRef.current = state.fire.elapsed_sec;
-    const applied = applyRescueNavState(state);
+  const syncRescueNavState = useCallback(
+    async (state: RealtimeNavState) => {
+      rescueNavSimElapsedRef.current = state.fire.elapsed_sec;
 
-    if (applied.route) {
-      setRescueNavRoute(applied.route);
+      try {
+        const navNodes = await fetchAllNavNodes();
+        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, zones, navNodes));
+      } catch {
+        setFireSpreadZoneIds(fireSpreadToZoneIds(state.fire.fire_nodes, zones, []));
+      }
+
+      const applied = applyRescueNavState(state);
+
+      if (applied.route) {
+        setRescueNavRoute(applied.route);
+        setRescueNavStatus(applied.statusMessage);
+        setRescueNavError(null);
+        setLayerVisibility((value) => ({ ...value, structure: true }));
+        return;
+      }
+
+      setRescueNavRoute(null);
       setRescueNavStatus(applied.statusMessage);
-      setRescueNavError(null);
-      setLayerVisibility((value) => ({ ...value, structure: true }));
-      return;
-    }
-
-    setRescueNavRoute(null);
-    setRescueNavStatus(applied.statusMessage);
-    setRescueNavError(applied.errorMessage);
-  }, []);
+      setRescueNavError(applied.errorMessage);
+    },
+    [zones],
+  );
 
   const refreshRescueNavFromServer = useCallback(
     async (elapsedSec?: number) => {
       const state = await fetchRealtimeNavState(
         elapsedSec != null ? { elapsedSec } : undefined,
       );
-      syncRescueNavState(state);
+      await syncRescueNavState(state);
       return state;
     },
     [syncRescueNavState],
@@ -836,11 +855,12 @@ export function EmbeddedBuildingSceneViewer({
       }
 
       const state = await startRealtimeNavSession({ ...sessionNodes, reset_clock: true });
-      syncRescueNavState(state);
+      await syncRescueNavState(state);
       setRescueNavPolling(true);
     } catch (error) {
       setRescueNavRoute(null);
       setRescueNavPolling(false);
+      setFireSpreadZoneIds(new Set());
       setRescueNavError(
         error instanceof Error ? error.message : "구조 경로 탐색에 실패했습니다.",
       );

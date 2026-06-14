@@ -5,11 +5,18 @@ import { fetchNavNodes, type NavNodeSummary } from "@/lib/realtime-nav/api";
 const NAV_ROOM_TYPES = new Set(["room", "corridor"]);
 
 let cachedNavRooms: NavNodeSummary[] | null = null;
+let cachedAllNavNodes: NavNodeSummary[] | null = null;
+
+export async function fetchAllNavNodes(): Promise<NavNodeSummary[]> {
+  if (cachedAllNavNodes) return cachedAllNavNodes;
+  cachedAllNavNodes = await fetchNavNodes();
+  return cachedAllNavNodes;
+}
 
 export async function fetchNavRoomNodes(): Promise<NavNodeSummary[]> {
   if (cachedNavRooms) return cachedNavRooms;
 
-  const nodes = await fetchNavNodes();
+  const nodes = await fetchAllNavNodes();
   cachedNavRooms = nodes.filter(
     (node) =>
       NAV_ROOM_TYPES.has(String(node.type ?? "").toLowerCase()) &&
@@ -21,6 +28,7 @@ export async function fetchNavRoomNodes(): Promise<NavNodeSummary[]> {
 
 export function clearNavRoomCache() {
   cachedNavRooms = null;
+  cachedAllNavNodes = null;
 }
 
 function dist2(a: Vec3, b: Vec3): number {
